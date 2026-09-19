@@ -98,7 +98,7 @@
   "optionsShowLabels": { "message": "Show labels on posts" },
   "optionsShowLabelsDescription": { "message": "One small tag next to the author name. The AI-written % only appears when it is 40% or higher." },
   "optionsHideSidebar": { "message": "Hide the right column" },
-  "optionsHideSidebarDescription": { "message": "Removes Premium upsells, Today's News, Trending and Who to follow. Posts use the full width. Search is still at /explore." },
+  "optionsHideSidebarDescription": { "message": "Right column keeps only the search box; Premium upsell, Today's News, Trending and Who to follow are removed." },
   "optionsHiddenPosts": { "message": "Hidden posts are" },
   "optionsModeHide": { "message": "Collapsed to one line, with Show / Hide" },
   "optionsModeDim": { "message": "Dimmed, readable on hover" },

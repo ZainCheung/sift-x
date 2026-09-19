@@ -98,7 +98,7 @@
   "optionsShowLabels": { "message": "在帖子上显示标签" },
   "optionsShowLabelsDescription": { "message": "在作者名称旁显示小标签。只有 AI 写作概率达到 40% 时才会显示。" },
   "optionsHideSidebar": { "message": "隐藏右侧栏" },
-  "optionsHideSidebarDescription": { "message": "移除 Premium 推广、今日新闻、趋势和推荐关注。帖子会使用完整宽度。搜索仍可在 /explore 使用。" },
+  "optionsHideSidebarDescription": { "message": "右侧栏仅保留搜索框；Premium 推广、今日新闻、趋势和推荐关注会被移除。" },
   "optionsHiddenPosts": { "message": "隐藏的帖子显示为" },
   "optionsModeHide": { "message": "折叠成一行，可显示 / 隐藏" },
   "optionsModeDim": { "message": "变暗，悬停时可阅读" },
