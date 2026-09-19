@@ -99,7 +99,17 @@ async function main() {
     rows.push({ id: fixture.id, expected: fixture.expected || {}, answers: data.answers || {}, input_tokens: Number(data.usage?.input_tokens) || 0, model: data.model || model });
   }
   const summary = summarizeRows(rows, { techThreshold, aiThreshold });
-  console.log(JSON.stringify({ model, responseModels: [...new Set(rows.map((row) => row.model))], dimensions, ...summary, rows }, null, 2));
+  const localFixturesSent = fixtures.filter((fixture) => fixture.expected?.local).map((fixture) => fixture.id);
+  console.log(JSON.stringify({
+    scope: "jev-evaluator-only",
+    note: "Every fixture is sent to Jev, including fixtures marked expected.local; use runtime stats for full-pipeline averages.",
+    model,
+    responseModels: [...new Set(rows.map((row) => row.model))],
+    dimensions,
+    localFixturesSent,
+    ...summary,
+    rows
+  }, null, 2));
 }
 
 if (require.main === module) main().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

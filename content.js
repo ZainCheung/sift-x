@@ -16,8 +16,8 @@
   let stopRegexes = [];
   let allow = new Set();
   let block = new Set();
-  const verdicts = new Map(); // id -> verdict (survives X's list virtualisation)
-  const pending = new Map(); // id + requested dimensions -> Promise
+  const verdicts = new Map(); // post id + normalized state fingerprint -> verdict
+  const pending = new Map(); // post id + state fingerprint + dimensions -> Promise
   let batch = [];
   let batchTimer = null;
   let pageHidden = 0;
@@ -178,6 +178,10 @@
     return XQF_normalizeStateForJev(s);
   }
 
+  function stateIdentity(t, state) {
+    return XQF_postStateIdentity(t.id, state || toState(t));
+  }
+
   // On a /status/ page the focal post is the conversation root; replies are judged in its context.
   let focalCache = { path: "", post: null };
   function focalPost() {
@@ -199,8 +203,8 @@
   function isAI(v) { return !!v && typeof v.ai === "number" && v.ai >= AI_AT; }
   function isOffTopic(v) { return !!v && typeof v.tech === "number" && v.tech < techAt(); }
 
-  function localVerdict(t) {
-    return XQF_localVerdictForJev(toState(t));
+  function localVerdict(t, state) {
+    return XQF_localVerdictForJev(state || toState(t));
   }
 
   function notePipeline(kind) { send({ type: "pipeline", kind }); }
@@ -383,7 +387,7 @@
     batchTimer = null;
     const items = batch; batch = [];
     if (!items.length) return;
-    send({ type: "score", items: items.map((i) => ({ id: i.t.id, state: toState(i.t), dimensions: i.dimensions })) })
+    send({ type: "score", items: items.map((i) => ({ id: i.t.id, state: i.state, dimensions: i.dimensions })) })
       .then((r) => {
         if (r === null) { items.forEach((i) => i.resolve(null)); return; }
         if (r?.error === "no_api_key") {
@@ -391,27 +395,35 @@
           items.forEach((i) => i.resolve(null));
           return;
         }
-        const byId = new Map((r?.results || []).map((x) => [x.id, x]));
         let authErr = null;
-        for (const i of items) {
-          const res = byId.get(i.t.id);
-          if (res?.verdict && res.verdict.evaluator === evaluatorId) verdicts.set(i.t.id, XQF_mergeVerdicts(verdicts.get(i.t.id), res.verdict));
+        const results = Array.isArray(r?.results) ? r.results : [];
+        items.forEach((i, index) => {
+          // Background preserves Promise.all order and echoes stateKey. Both
+          // checks prevent a stale reply or duplicate post id from populating
+          // the verdict for a different SPA context.
+          const res = results[index];
+          const sameIdentity = res && String(res.id) === String(i.t.id) && res.stateKey === i.stateKey;
+          if (sameIdentity && res.verdict && res.verdict.evaluator === evaluatorId) {
+            verdicts.set(i.identityKey, XQF_mergeVerdicts(verdicts.get(i.identityKey), res.verdict));
+          }
           if (res?.error && /HTTP 40[13]/.test(res.error)) authErr = res.error;
-          i.resolve(verdicts.get(i.t.id) || (res?.verdict?.evaluator === evaluatorId ? res.verdict : null));
-        }
+          i.resolve(sameIdentity ? (verdicts.get(i.identityKey) || (res.verdict?.evaluator === evaluatorId ? res.verdict : null)) : null);
+        });
         if (authErr) toast(tx("contentKeyRejected", "Sift: TypeSafe rejected the API key."), tx("contentFixKey", "Fix key"), () => send({ type: "openOptions" }));
       })
       .catch((e) => { items.forEach((i) => i.resolve(null)); console.warn("[Sift] score failed", e); });
   }
 
-  function requestScore(t, dimensions) {
-    const dims = [...new Set(dimensions || XQF_dimensionsForSettings(settings, { isReply: t.isReply }))];
-    if (!dims.length) return Promise.resolve(verdicts.get(t.id) || null);
-    if (XQF_hasDimensions(verdicts.get(t.id), dims)) return Promise.resolve(verdicts.get(t.id));
-    const pendingKey = `${t.id}:${dims.join(",")}`;
+  function requestScore(t, dimensions, state) {
+    const dims = [...new Set(dimensions || XQF_dimensionsForSettings(settings, { isReply: t.isReply }))].sort();
+    const identity = XQF_scoreRequestIdentity(t.id, state || toState(t), dims);
+    const current = verdicts.get(identity.key);
+    if (!dims.length) return Promise.resolve(current || null);
+    if (XQF_hasDimensions(current, dims)) return Promise.resolve(current);
+    const pendingKey = identity.requestKey;
     if (pending.has(pendingKey)) return pending.get(pendingKey);
     const p = new Promise((resolve) => {
-      batch.push({ t, dimensions: dims, resolve });
+      batch.push({ t, state: identity.state, stateKey: identity.stateKey, identityKey: identity.key, dimensions: dims, resolve });
       if (!batchTimer) batchTimer = setTimeout(flushBatch, 120);
     }).finally(() => pending.delete(pendingKey));
     pending.set(pendingKey, p);
@@ -425,6 +437,7 @@
     if (!t) return;
     article.setAttribute(ATTR, "pending");
     article.setAttribute("data-sift-id", t.id);
+    const identity = stateIdentity(t);
 
     const onStatusPage = /\/status\/\d+/.test(location.pathname);
     if (onStatusPage && !t.isFocal && !settings.filterReplies) {
@@ -434,15 +447,15 @@
         return;
       }
       const dims = XQF_dimensionsForSettings(settings, { isReply: true });
-      const v0 = verdicts.get(t.id);
+      const v0 = verdicts.get(identity.key);
       if (XQF_hasDimensions(v0, dims)) badge(article, v0, null);
-      else requestScore(t, dims).then((v) => v && article.isConnected && badge(article, v, null));
+      else requestScore(t, dims, identity.state).then((v) => v && article.isConnected && badge(article, v, null));
       article.setAttribute(ATTR, "kept");
       return;
     }
 
     const local = decide(t, null);
-    if (local) { notePipeline("local"); finish(article, t, verdicts.get(t.id) || null); return; }
+    if (local) { notePipeline("local"); finish(article, t, verdicts.get(identity.key) || null); return; }
 
     // nothing at all to judge (no text, no quote, no card, no media): keep silently
     if (!t.text && !t.quoted && !t.card && !t.media) { notePipeline("skipped"); article.setAttribute(ATTR, "kept"); return; }
@@ -454,16 +467,16 @@
       return;
     }
 
-    const localVerdictForPost = localVerdict(t);
+    const localVerdictForPost = localVerdict(t, identity.state);
     if (localVerdictForPost) {
-      verdicts.set(t.id, XQF_mergeVerdicts(verdicts.get(t.id), localVerdictForPost));
+      verdicts.set(identity.key, XQF_mergeVerdicts(verdicts.get(identity.key), localVerdictForPost));
       notePipeline("local");
-      finish(article, t, verdicts.get(t.id));
+      finish(article, t, verdicts.get(identity.key));
       return;
     }
 
-    if (!XQF_hasDimensions(verdicts.get(t.id), dims) && settings.mode === "hide") cell(article).classList.add("sift-pending");
-    const v = await requestScore(t, dims);
+    if (!XQF_hasDimensions(verdicts.get(identity.key), dims) && settings.mode === "hide") cell(article).classList.add("sift-pending");
+    const v = await requestScore(t, dims, identity.state);
     if (!article.isConnected) return;
     finish(article, t, v);
   }

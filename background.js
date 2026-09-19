@@ -96,26 +96,18 @@ function scheduleSave() {
   }, 1500);
 }
 
-// A small deterministic fingerprint is sufficient for a local best-effort
-// semantic cache. The post-id cache remains the authoritative fast path.
-function fingerprint(value) {
-  const text = typeof value === "string" ? value : JSON.stringify(value);
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(16).padStart(8, "0");
-}
+// Keep the raw fingerprint export for diagnostics, but use the shared state
+// helper below for every cache key so content/background identity cannot drift.
+function fingerprint(value) { return XQF_fingerprint(value); }
 
 function modelName(model) { return XQF_resolveModel(model); }
 function evaluatorVersion(dimension, model) {
   return `${modelName(model)}|${XQF_DIMENSION_VERSIONS[dimension] || XQF_PROMPT_VERSION}|${XQF_STATE_SCHEMA_VERSION}`;
 }
 function semanticKey(model, state) {
-  return `${modelName(model)}|${XQF_PROMPT_VERSION}|${XQF_STATE_SCHEMA_VERSION}|${fingerprint(state)}`;
+  return `${modelName(model)}|${XQF_PROMPT_VERSION}|${XQF_STATE_SCHEMA_VERSION}|${XQF_stateFingerprint(state)}`;
 }
-function stateFingerprint(state) { return fingerprint(XQF_normalizeStateForJev(state)); }
+function stateFingerprint(state) { return XQF_stateFingerprint(state); }
 function validDimensions(dimensions) {
   return [...new Set((dimensions || []).filter((d) => DIMENSIONS.includes(d)))];
 }
@@ -262,17 +254,17 @@ function touch(map, key, value) {
 }
 
 async function score(id, state, dimensions) {
-  const dims = validDimensions(dimensions?.length ? dimensions : XQF_dimensionsForSettings(settings, { isReply: !!(state?.is_reply || state?.in_reply_to) }));
   const postId = String(id);
+  const normalized = XQF_normalizeStateForJev(state);
+  const stateKey = XQF_stateFingerprint(normalized);
+  const dims = validDimensions(dimensions?.length ? dimensions : XQF_dimensionsForSettings(settings, { isReply: !!(normalized.is_reply || normalized.in_reply_to) }));
   if (!dims.length) {
     stats.skipped++;
     scheduleSave();
-    return { id, skipped: true };
+    return { id, stateKey, dimensions: dims, skipped: true };
   }
 
   const model = modelName(settings.model);
-  const normalized = XQF_normalizeStateForJev(state);
-  const stateKey = stateFingerprint(normalized);
   const key = semanticKey(model, normalized);
   let entry = cache.get(postId);
   let missing = missingDimensions(entry, dims, model, stateKey);
@@ -281,7 +273,7 @@ async function score(id, state, dimensions) {
     touch(cache, postId, entry);
     stats.cacheHits++;
     scheduleSave();
-    return { id, verdict, cached: true };
+    return { id, stateKey, dimensions: dims, verdict, cached: true };
   }
 
   // Reuse valid dimensions from a duplicate/copy-pasted state before asking
@@ -297,13 +289,13 @@ async function score(id, state, dimensions) {
       stats.semanticCacheHits++;
       touch(semanticCache, key, semanticEntry);
       scheduleSave();
-      if (!missing.length) return { id, verdict, cached: true, semanticCached: true };
+      if (!missing.length) return { id, stateKey, dimensions: dims, verdict, cached: true, semanticCached: true };
     }
   }
 
   const evaluationKey = `${key}|${missing.slice().sort().map((d) => evaluatorVersion(d, model)).join(",")}`;
   const result = await requestEvaluation(evaluationKey, normalized, missing);
-  if (result.error) return { id, error: result.error };
+  if (result.error) return { id, stateKey, dimensions: dims, error: result.error };
   const patch = toVerdict(result.resp, missing);
   const analyzedKey = `${postId}|${model}|${stateKey}`;
   if (!analyzedPostKeys.has(analyzedKey)) {
@@ -319,7 +311,7 @@ async function score(id, state, dimensions) {
   semanticCache.set(key, mergeEntry(currentSemantic, patch, missing, model, stateKey));
   scheduleSave();
   verdict = verdictFromEntry(entry, dims, model, stateKey);
-  return { id, verdict, cached: false };
+  return { id, stateKey, dimensions: dims, verdict, cached: false };
 }
 
 function statsSnapshot() {

@@ -96,7 +96,28 @@ test("the configured model is pinned and aliases resolve to the pinned version",
   assert.equal(defaults.XQF_DEFAULT_MODEL, "jev-1.13.0");
   assert.equal(defaults.XQF_DEFAULTS.model, "jev-1.13.0");
   assert.equal(defaults.XQF_resolveModel("jev-latest"), "jev-1.13.0");
+  assert.equal(defaults.XQF_resolveModel("jev-preview"), "jev-1.13.0");
   assert.equal(defaults.XQF_resolveModel("jev-1.12.0"), "jev-1.12.0");
+});
+
+test("state fingerprints distinguish context while ignoring discarded fields", () => {
+  const base = { text: "Nice", likes: 1, author: "@reply" };
+  assert.equal(defaults.XQF_stateFingerprint(base), defaults.XQF_stateFingerprint({ ...base, likes: 999, author: "@renamed" }));
+  assert.notEqual(
+    defaults.XQF_stateFingerprint(base),
+    defaults.XQF_stateFingerprint({ ...base, in_reply_to: { text: "A technical post" } })
+  );
+});
+
+test("content cache identities include context and requested dimensions", () => {
+  const timeline = defaults.XQF_postStateIdentity("reply-1", { text: "Nice" });
+  const thread = defaults.XQF_postStateIdentity("reply-1", { text: "Nice", in_reply_to: { text: "A technical post" } });
+  assert.notEqual(timeline.key, thread.key);
+  const tech = defaults.XQF_scoreRequestIdentity("reply-1", { text: "Nice" }, ["tech"]);
+  const category = defaults.XQF_scoreRequestIdentity("reply-1", { text: "Nice" }, ["category"]);
+  const techReordered = defaults.XQF_scoreRequestIdentity("reply-1", { text: "Nice" }, ["tech"]);
+  assert.notEqual(tech.requestKey, category.requestKey);
+  assert.equal(tech.requestKey, techReordered.requestKey);
 });
 
 test("fixture corpus covers the requested regression classes", () => {

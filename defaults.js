@@ -3,13 +3,13 @@
 const XQF_TEXT = (key, fallback, substitutions) =>
   typeof XQF_t === "function" ? XQF_t(key, substitutions, fallback) : fallback;
 
-// Pin the calibrated Jev model. `jev-latest` is an alias that can move when a
-// new release ships, which would otherwise invalidate confidence thresholds
-// and make persistent verdicts silently change meaning.
+// Pin the calibrated Jev model. `jev-latest` and `jev-preview` are aliases that
+// can move when a new release ships, which would otherwise invalidate
+// confidence thresholds and make persistent verdicts silently change meaning.
 const XQF_DEFAULT_MODEL = "jev-1.13.0";
 function XQF_resolveModel(model) {
   const configured = String(model || XQF_DEFAULT_MODEL).trim();
-  return configured === "jev-latest" ? XQF_DEFAULT_MODEL : configured;
+  return configured === "jev-latest" || configured === "jev-preview" ? XQF_DEFAULT_MODEL : configured;
 }
 
 // What the user sees: five labels. Jev answers with finer categories (below) which map onto these.
@@ -166,6 +166,36 @@ function XQF_normalizeStateForJev(raw) {
   return out;
 }
 
+// Keep state identity in one place. The content script uses this for its
+// in-memory verdict/pending keys and the background uses it for persistent and
+// semantic caches, so a reply gaining parent context cannot reuse an older
+// context-free result.
+function XQF_fingerprint(value) {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? null);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+function XQF_stateFingerprint(raw) {
+  return XQF_fingerprint(XQF_normalizeStateForJev(raw));
+}
+
+function XQF_postStateIdentity(postId, rawState) {
+  const state = XQF_normalizeStateForJev(rawState);
+  const stateKey = XQF_fingerprint(state);
+  return { state, stateKey, key: `${String(postId)}:${stateKey}` };
+}
+
+function XQF_scoreRequestIdentity(postId, rawState, dimensions) {
+  const post = XQF_postStateIdentity(postId, rawState);
+  const dims = [...new Set(dimensions || [])].sort();
+  return { ...post, dimensions: dims, requestKey: `${post.key}:${dims.join(",")}` };
+}
+
 // Select only the dimensions that can affect the current UI decision.  A
 // reply with both filtering and badges disabled has no observable Jev result.
 function XQF_dimensionsForSettings(settings, context = {}) {
@@ -252,7 +282,8 @@ if (typeof globalThis !== "undefined") {
   Object.assign(globalThis, {
     XQF_DEFAULT_MODEL, XQF_resolveModel, XQF_DEFAULTS, XQF_CATEGORIES, XQF_FINE_TO_UI, XQF_FINE_LABEL, XQF_TAG, XQF_PRESETS,
     XQF_AI, XQF_TOPIC, XQF_QUESTIONS, XQF_PROMPT_VERSION, XQF_DIMENSION_VERSIONS, XQF_STATE_SCHEMA_VERSION,
-    XQF_STATE_LIMITS, XQF_truncate, XQF_evaluatorIdentity, XQF_normalizeStateForJev, XQF_localVerdictForJev, XQF_dimensionsForSettings,
+    XQF_STATE_LIMITS, XQF_truncate, XQF_evaluatorIdentity, XQF_normalizeStateForJev, XQF_fingerprint, XQF_stateFingerprint,
+    XQF_postStateIdentity, XQF_scoreRequestIdentity, XQF_localVerdictForJev, XQF_dimensionsForSettings,
     XQF_questionsForDimensions, XQF_hasDimensions, XQF_mergeVerdicts
   });
 }
