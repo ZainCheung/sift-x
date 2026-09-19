@@ -1,28 +1,39 @@
 // Shared defaults. Loaded by background (importScripts), options and popup (<script>).
 
+const XQF_TEXT = (key, fallback, substitutions) =>
+  typeof XQF_t === "function" ? XQF_t(key, substitutions, fallback) : fallback;
+
 // What the user sees: five labels. Jev answers with finer categories (below) which map onto these.
 const XQF_CATEGORIES = {
-  substance: { icon: "💡", label: "Substance", hide: false, desc: "Insight, news, real discussion — something to learn or think about" },
-  humor:     { icon: "😂", label: "Humor",     hide: false, desc: "Jokes, memes, wit" },
-  chitchat:  { icon: "🙂", label: "Chit-chat", hide: false, desc: "Personal updates, photos, reactions, emoji replies" },
-  promo:     { icon: "📢", label: "Promo",     hide: false, desc: "Selling or pushing a product, course, newsletter, waitlist" },
-  junk:      { icon: "🚫", label: "Junk",      hide: true,  desc: "Engagement bait, empty filler, ads" }
+  substance: { icon: "💡", label: XQF_TEXT("categorySubstanceLabel", "Substance"), hide: false, desc: XQF_TEXT("categorySubstanceDescription", "Insight, news, real discussion — something to learn or think about") },
+  humor:     { icon: "😂", label: XQF_TEXT("categoryHumorLabel", "Humor"),     hide: false, desc: XQF_TEXT("categoryHumorDescription", "Jokes, memes, wit") },
+  chitchat:  { icon: "🙂", label: XQF_TEXT("categoryChitchatLabel", "Chit-chat"), hide: false, desc: XQF_TEXT("categoryChitchatDescription", "Personal updates, photos, reactions, emoji replies") },
+  promo:     { icon: "📢", label: XQF_TEXT("categoryPromoLabel", "Promo"),     hide: false, desc: XQF_TEXT("categoryPromoDescription", "Selling or pushing a product, course, newsletter, waitlist") },
+  junk:      { icon: "🚫", label: XQF_TEXT("categoryJunkLabel", "Junk"),      hide: true,  desc: XQF_TEXT("categoryJunkDescription", "Engagement bait, empty filler, ads") }
 };
 const XQF_FINE_TO_UI = { insight: "substance", news: "substance", discussion: "substance", humor: "humor", personal: "chitchat", promo: "promo", bait: "junk", filler: "junk", ad: "junk" };
-const XQF_FINE_LABEL = { insight: "insight", news: "news", discussion: "discussion", humor: "humor", personal: "personal", promo: "promo", bait: "engagement bait", filler: "filler", ad: "ad" };
+const XQF_FINE_LABEL = {
+  insight: XQF_TEXT("fineInsight", "insight"), news: XQF_TEXT("fineNews", "news"), discussion: XQF_TEXT("fineDiscussion", "discussion"),
+  humor: XQF_TEXT("fineHumor", "humor"), personal: XQF_TEXT("finePersonal", "personal"), promo: XQF_TEXT("finePromo", "promo"),
+  bait: XQF_TEXT("fineBait", "engagement bait"), filler: XQF_TEXT("fineFiller", "filler"), ad: XQF_TEXT("fineAd", "ad")
+};
 // Short word shown on the post tag.
-const XQF_TAG = { insight: "Insight", news: "News", discussion: "Discussion", humor: "Humor", personal: "Chat", promo: "Promo", bait: "Bait", filler: "Filler", ad: "Ad" };
+const XQF_TAG = {
+  insight: XQF_TEXT("tagInsight", "Insight"), news: XQF_TEXT("tagNews", "News"), discussion: XQF_TEXT("tagDiscussion", "Discussion"),
+  humor: XQF_TEXT("tagHumor", "Humor"), personal: XQF_TEXT("tagPersonal", "Chat"), promo: XQF_TEXT("tagPromo", "Promo"),
+  bait: XQF_TEXT("tagBait", "Bait"), filler: XQF_TEXT("tagFiller", "Filler"), ad: XQF_TEXT("tagAd", "Ad")
+};
 
 // One-tap presets: what to hide.
 const XQF_PRESETS = {
-  signal:     { label: "Signal",     desc: "Only substantive tech posts", hide: { substance: false, humor: true,  chitchat: true,  promo: true,  junk: true }, hideAI: true, hideOffTopic: true },
-  balanced:   { label: "Balanced",   desc: "Tech, including humor and chat", hide: { substance: false, humor: false, chitchat: false, promo: false, junk: true }, hideAI: true, hideOffTopic: true },
-  everything: { label: "Everything", desc: "Label only, hide nothing", hide: { substance: false, humor: false, chitchat: false, promo: false, junk: false }, hideAI: false, hideOffTopic: false }
+  signal:     { label: XQF_TEXT("presetSignalLabel", "Signal"),     desc: XQF_TEXT("presetSignalDescription", "Only substantive tech posts"), hide: { substance: false, humor: true,  chitchat: true,  promo: true,  junk: true }, hideAI: true, hideOffTopic: true },
+  balanced:   { label: XQF_TEXT("presetBalancedLabel", "Balanced"),   desc: XQF_TEXT("presetBalancedDescription", "Tech, including humor and chat"), hide: { substance: false, humor: false, chitchat: false, promo: false, junk: true }, hideAI: true, hideOffTopic: true },
+  everything: { label: XQF_TEXT("presetEverythingLabel", "Everything"), desc: XQF_TEXT("presetEverythingDescription", "Label only, hide nothing"), hide: { substance: false, humor: false, chitchat: false, promo: false, junk: false }, hideAI: false, hideOffTopic: false }
 };
 
 // Orthogonal flags: any label can also be AI-written, and any label can be off-topic.
-const XQF_AI = { icon: "🤖", label: "AI-written", hide: true, desc: "Reads like ChatGPT wrote it: “It's not X. It's Y.”, rule-of-three lists, emoji bullets, buzzwords, zero personal detail" };
-const XQF_TOPIC = { icon: "🌐", label: "Off-topic", hide: true, desc: "Not about tech: gossip, relationships, entertainment, sports, politics, lifestyle, memes with no technical angle" };
+const XQF_AI = { icon: "🤖", label: XQF_TEXT("aiLabel", "AI-written"), hide: true, desc: XQF_TEXT("aiDescription", "Reads like ChatGPT wrote it: “It's not X. It's Y.”, rule-of-three lists, emoji bullets, buzzwords, zero personal detail") };
+const XQF_TOPIC = { icon: "🌐", label: XQF_TEXT("topicLabel", "Off-topic"), hide: true, desc: XQF_TEXT("topicDescription", "Not about tech: gossip, relationships, entertainment, sports, politics, lifestyle, memes with no technical angle") };
 
 const XQF_DEFAULTS = {
   enabled: true,

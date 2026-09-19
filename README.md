@@ -22,6 +22,8 @@ Powered by [TypeSafe Jev](https://typesafe.ai). About $0.00003 per post.
 3. The settings page opens. Paste a key from [console.typesafe.ai/keys](https://console.typesafe.ai/keys) and click **Connect**.
 4. Open [x.com](https://x.com).
 
+The interface follows the browser language. English is the default; Simplified Chinese (`zh-CN`) is also supported.
+
 ## Use
 
 - Each post gets one small tag next to the author. Substantive tech posts get a green tag and a hairline accent; the AI-written % appears only when it is notable.
