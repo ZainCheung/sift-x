@@ -2,17 +2,19 @@
 
 :root {
   --sift-fg: #71767b; --sift-fg-strong: #e7e9ea; --sift-line: rgb(47, 51, 54);
-  --sift-hover: rgba(255,255,255,.04); --sift-menu-bg: #16202a;
+  --sift-hover: rgba(255,255,255,.04); --sift-menu-bg: #16202a; --sift-bg: #000; --sift-panel: #16181c;
   --sift-green: #4fbf84; --sift-blue: #6fb3f2; --sift-purple: #b89cf6; --sift-amber: #d9a441; --sift-red: #e0706a; --sift-pink: #e58ac0;
 }
 [data-sift-theme="light"] {
   --sift-fg: #536471; --sift-fg-strong: #0f1419; --sift-line: #eff3f4;
-  --sift-hover: rgba(0,0,0,.03); --sift-menu-bg: #fff;
+  --sift-hover: rgba(0,0,0,.03); --sift-menu-bg: #fff; --sift-bg: #fff; --sift-panel: #eff3f4;
   --sift-green: #178a4d; --sift-blue: #1d6fb8; --sift-purple: #7c3aed; --sift-amber: #9a6700; --sift-red: #c0392b; --sift-pink: #b0257a;
 }
 
-/* ---- no sidebar: drop X's right column, let the timeline breathe ---- */
-html[data-sift-sidebar="off"] [data-testid="sidebarColumn"] { display: none !important; }
+/* ---- right column: keep only the search box ---- */
+/* at every level on the way down to the search form, hide siblings that are not on that path (the typeahead dropdown stays) */
+html[data-sift-sidebar="off"] [data-testid="sidebarColumn"] :has(form[role="search"]) > :not(form[role="search"]):not(:has(form[role="search"])):not([data-testid*="typeahead"]):not(:has([data-testid*="typeahead"])):not([role="listbox"]) { display: none !important; }
+html[data-sift-sidebar="off"] [data-testid="sidebarColumn"] :is(aside, section, nav[aria-label="Footer"], [aria-label*="Trending"], [aria-label*="Timeline"]):not(:has(form[role="search"])) { display: none !important; }
 html[data-sift-sidebar="off"] [data-testid="primaryColumn"] { max-width: 760px !important; width: 760px !important; }
 html[data-sift-sidebar="off"] [data-testid="primaryColumn"] > div > div { max-width: none !important; }
 @media (max-width: 1100px) {
