@@ -85,7 +85,7 @@
 
   "optionsHeaderDescription": { "message": "让你的 X 信息流只保留有实质的科技内容。每条帖子都会获得标签；由你选择隐藏哪些。" },
   "optionsConnection": { "message": "连接" },
-  "optionsConnectionDescription": { "message": "标签由 TypeSafe Jev 生成。每条帖子约 0.00003 美元。" },
+  "optionsConnectionDescription": { "message": "标签由 TypeSafe Jev 生成。费用按 Jev 返回的输入 Token 计算。" },
   "optionsApiKey": { "message": "API 密钥" },
   "optionsGetOne": { "message": "获取密钥" },
   "optionsApiKeyPlaceholder": { "message": "tsk_…" },
