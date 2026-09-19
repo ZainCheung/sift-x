@@ -1,0 +1,95 @@
+/* ---- hidden post: collapse the cell, keep only our slim bar ---- */
+[data-testid="cellInnerDiv"].sift-hidden > *:not(.sift-bar) { display: none !important; }
+
+.sift-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 16px;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #71767b; cursor: default;
+  border-bottom: 1px solid rgb(47, 51, 54);
+}
+.sift-bar-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sift-bar-text::before { content: "Sift hid "; color: #536471; }
+.sift-actions { flex: none; display: flex; align-items: center; gap: 4px; position: relative; }
+.sift-show, .sift-more {
+  border: 1px solid #536471; background: transparent; color: #e7e9ea;
+  border-radius: 999px; padding: 3px 14px; font-size: 12px; font-weight: 600; cursor: pointer; line-height: 1.4;
+}
+.sift-show:hover, .sift-more:hover { color: #e7e9ea; border-color: #536471; }
+.sift-more { padding: 2px 7px; }
+.sift-menu {
+  display: none; position: absolute; right: 0; top: 100%; z-index: 20;
+  background: #16202a; border: 1px solid #2f3336; border-radius: 10px; padding: 4px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5); flex-direction: column; min-width: 190px;
+}
+.sift-menu.open { display: flex; }
+.sift-menu-item {
+  background: transparent; border: 0; color: #e7e9ea; text-align: left;
+  padding: 7px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.sift-menu-item:hover { background: #1d2b3a; }
+
+/* ---- pending (waiting for Jev) & dim modes: no layout jump, just fade ---- */
+[data-testid="cellInnerDiv"].sift-pending article { opacity: .55; transition: opacity .2s; }
+[data-testid="cellInnerDiv"].sift-dimmed article { opacity: .3; transition: opacity .15s; }
+[data-testid="cellInnerDiv"].sift-dimmed article:hover { opacity: 1; }
+
+/* ---- label ---- */
+article[data-testid="tweet"] { position: relative; }
+.sift-badge {
+  position: absolute; top: 8px; right: 48px; z-index: 5;
+  display: inline-flex; align-items: center; gap: 4px;
+  font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 5px 10px; border-radius: 999px; letter-spacing: .01em; cursor: default;
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 1px 2px rgba(0,0,0,.25);
+  white-space: nowrap;
+}
+.sift-badge.sift-inline { position: static; margin-left: 8px; flex: none; align-self: center; }
+.sift-ai { font-weight: 500; font-variant-numeric: tabular-nums; }
+.sift-ai.sift-inline { margin-left: 4px; }
+.sift-ai-low  { background: rgba(126,226,168,.12); color: #7ee2a8; }
+.sift-ai-mid  { background: rgba(242,201,121,.14); color: #f2c979; }
+.sift-ai-high { background: rgba(244,164,212,.16); color: #f4a4d4; }
+[data-sift-theme="light"] .sift-ai-low  { background: #e6f7ee; color: #0f7a3d; }
+[data-sift-theme="light"] .sift-ai-mid  { background: #fbf1dc; color: #9a6700; }
+[data-sift-theme="light"] .sift-ai-high { background: #fbe8f3; color: #b0257a; }
+.sift-bar.sift-open { background: rgba(29,155,240,.06); }
+.sift-c-substance { background: #1d3a2a; color: #7ee2a8; }
+.sift-c-humor     { background: #2b1d3a; color: #d3a4ff; }
+.sift-c-chitchat  { background: #26303a; color: #aab8c2; }
+.sift-c-promo     { background: #3a2f1d; color: #f2c979; }
+.sift-c-junk      { background: #3a1d1d; color: #f4a4a4; }
+.sift-c-ai, .sift-c-blocked { background: #3a1d2f; color: #f4a4d4; }
+
+/* ---- toast ---- */
+.sift-toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 99999;
+  display: flex; align-items: center; gap: 12px;
+  background: #16202a; color: #e7e9ea; border: 1px solid #2f3336; border-radius: 12px;
+  padding: 10px 14px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 8px 30px rgba(0,0,0,.5);
+}
+.sift-toast button {
+  background: #1d9bf0; color: #fff; border: 0; border-radius: 999px; padding: 5px 12px;
+  font: inherit; font-weight: 600; font-size: 12px; cursor: pointer;
+}
+.sift-toast .sift-toast-x { background: transparent; color: #71767b; padding: 0 4px; font-size: 16px; }
+
+/* ---- light theme (X "Default" background) ---- */
+[data-sift-theme="light"] .sift-bar { color: #536471; border-bottom-color: #eff3f4; }
+[data-sift-theme="light"] .sift-badge { border-color: rgba(0,0,0,.06); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+[data-sift-theme="light"] .sift-bar-text::before { color: #8b98a5; }
+[data-sift-theme="light"] .sift-show, [data-sift-theme="light"] .sift-more { color: #0f1419; border-color: #cfd9de; }
+[data-sift-theme="light"] .sift-show:hover, [data-sift-theme="light"] .sift-more:hover { color: #0f1419; border-color: #cfd9de; }
+[data-sift-theme="light"] .sift-menu { background: #fff; border-color: #eff3f4; box-shadow: 0 6px 24px rgba(0,0,0,.15); }
+[data-sift-theme="light"] .sift-menu-item { color: #0f1419; }
+[data-sift-theme="light"] .sift-menu-item:hover { background: #f7f9f9; }
+[data-sift-theme="light"] .sift-c-substance { background: #e6f7ee; color: #0f7a3d; }
+[data-sift-theme="light"] .sift-c-humor     { background: #f1e8fb; color: #7c3aed; }
+[data-sift-theme="light"] .sift-c-chitchat  { background: #eff3f4; color: #536471; }
+[data-sift-theme="light"] .sift-c-promo     { background: #fbf1dc; color: #9a6700; }
+[data-sift-theme="light"] .sift-c-junk      { background: #fde8e8; color: #c0392b; }
+[data-sift-theme="light"] .sift-c-ai, [data-sift-theme="light"] .sift-c-blocked { background: #fbe8f3; color: #b0257a; }
+[data-sift-theme="light"] .sift-toast { background: #fff; color: #0f1419; border-color: #eff3f4; box-shadow: 0 8px 30px rgba(0,0,0,.18); }
+[data-sift-theme="light"] .sift-toast .sift-toast-x { color: #536471; }

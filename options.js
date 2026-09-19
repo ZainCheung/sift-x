@@ -1,0 +1,91 @@
+const $ = (id) => document.getElementById(id);
+const SIMPLE = ["apiKey", "model", "mode", "filterReplies", "showBadges", "stopPhrases", "allowlist", "blocklist"];
+let hide = {}; let hideAI = true;
+
+function flash(msg, err = false) {
+  const s = $("status"); s.textContent = msg; s.style.color = err ? "var(--bad)" : "";
+  setTimeout(() => { if (s.textContent === msg) { s.textContent = "Saved automatically."; s.style.color = ""; } }, 2000);
+}
+
+function catRow(icon, label, desc, hidden, onChange, extraClass = "") {
+  const row = document.createElement("div"); row.className = "cat " + extraClass;
+  row.innerHTML = `<div class="icon">${icon}</div><div><div class="name">${label}</div><div class="desc">${desc}</div></div>
+    <div class="seg"><button class="show ${hidden ? "" : "active"}">Show</button><button class="hide ${hidden ? "active" : ""}">Hide</button></div>`;
+  const [bs, bh] = row.querySelectorAll("button");
+  const set = (h) => { bs.classList.toggle("active", !h); bh.classList.toggle("active", h); onChange(h); };
+  bs.addEventListener("click", () => set(false));
+  bh.addEventListener("click", () => set(true));
+  return row;
+}
+
+function renderCats() {
+  const box = $("cats"); box.innerHTML = "";
+  for (const [k, c] of Object.entries(XQF_CATEGORIES)) {
+    box.appendChild(catRow(c.icon, c.label, c.desc, !!hide[k], (h) => { hide = { ...hide, [k]: h }; autosave(); }));
+  }
+  box.appendChild(catRow(XQF_AI.icon, XQF_AI.label, XQF_AI.desc + ". Applies on top of any label.", hideAI, (h) => { hideAI = h; autosave(); }, "ai"));
+}
+
+function fill(s) {
+  for (const f of SIMPLE) { const el = $(f); if (el.type === "checkbox") el.checked = !!s[f]; else el.value = s[f] ?? ""; }
+  hide = { ...XQF_DEFAULTS.hide, ...(s.hide || {}) }; hideAI = s.hideAI !== false;
+  renderCats();
+  if (s.apiKey) setKeyStatus("Connected", true);
+}
+
+function collect() {
+  const out = { hide, hideAI };
+  for (const f of SIMPLE) { const el = $(f); out[f] = el.type === "checkbox" ? el.checked : el.value.trim(); }
+  if (!out.model) out.model = "jev-latest";
+  return out;
+}
+
+let autosaveTimer;
+function autosave() { clearTimeout(autosaveTimer); autosaveTimer = setTimeout(save, 250); }
+async function save() {
+  const s = collect();
+  const bad = s.stopPhrases.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"))
+    .filter((l) => { try { new RegExp(l, "i"); return false; } catch { return true; } });
+  if (bad.length) return flash(`Invalid regex: ${bad[0]}`, true);
+  await chrome.storage.sync.set(s);
+  flash("Saved");
+}
+
+function setKeyStatus(msg, ok) { const k = $("keyStatus"); k.textContent = msg; k.className = ok ? "ok" : "err"; }
+$("connect").addEventListener("click", async () => {
+  const key = $("apiKey").value.trim();
+  if (!key) return setKeyStatus("Paste your key first.", false);
+  setKeyStatus("Checking…", true);
+  const r = await chrome.runtime.sendMessage({ type: "test", apiKey: key, model: $("model").value.trim() || "jev-latest" });
+  if (r.ok) {
+    await chrome.storage.sync.set({ apiKey: key });
+    setKeyStatus(`Connected to ${r.model}. Open x.com — Sift is on.`, true);
+  } else setKeyStatus(`Could not connect: ${r.error}`, false);
+});
+$("apiKey").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
+
+for (const id of ["mode", "filterReplies", "showBadges", "model"]) $(id).addEventListener("change", autosave);
+for (const id of ["allowlist", "blocklist", "stopPhrases"]) $(id).addEventListener("blur", autosave);
+$("save").addEventListener("click", save);
+$("resetPhrases").addEventListener("click", () => { $("stopPhrases").value = XQF_DEFAULTS.stopPhrases; autosave(); });
+
+async function loadStats() {
+  const { stats } = await chrome.runtime.sendMessage({ type: "stats" });
+  $("sAnalyzed").textContent = stats.analyzed.toLocaleString();
+  $("sHidden").textContent = stats.hidden.toLocaleString();
+  $("sCost").textContent = "$" + stats.cost.toFixed(4);
+  $("sErrors").textContent = stats.errors;
+}
+$("clearCache").addEventListener("click", async () => { await chrome.runtime.sendMessage({ type: "clearCache" }); flash("Cache cleared — posts will be re-labelled"); });
+$("resetStats").addEventListener("click", async () => { await chrome.runtime.sendMessage({ type: "resetStats" }); loadStats(); flash("Counters reset"); });
+
+chrome.storage.onChanged.addListener((c, area) => {
+  if (area !== "sync") return;
+  if (c.allowlist && document.activeElement !== $("allowlist")) $("allowlist").value = c.allowlist.newValue || "";
+  if (c.blocklist && document.activeElement !== $("blocklist")) $("blocklist").value = c.blocklist.newValue || "";
+});
+
+(async () => {
+  fill({ ...XQF_DEFAULTS, ...(await chrome.storage.sync.get(XQF_DEFAULTS)) });
+  loadStats();
+})();

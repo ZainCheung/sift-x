@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Sift",
+  "short_name": "Sift",
+  "version": "0.6.1",
+  "description": "Labels every post and reply on X (Substance, Humor, Chit-chat, Promo, Junk, AI-written) with TypeSafe Jev. You choose what to hide.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://api.typesafe.ai/*",
+    "https://x.com/*",
+    "https://twitter.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "defaults.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Sift",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

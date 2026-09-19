@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#fff; --panel:#f6f6f6; --line:#e6e6e6; --fg:#111; --muted:#6b6b6b; --ok:#1a7f4b; --hide:#b42318; --show:#1a7f4b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16181b; --panel:#0e0f11; --line:#26292e; --fg:#ececec; --muted:#9a9fa6; } }
+  * { box-sizing: border-box; }
+  body { width: 300px; margin: 0; padding: 14px 16px 12px; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "PingFang SC", sans-serif; background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 12px; display: flex; justify-content: space-between; align-items: center; }
+  h1 img { width: 18px; height: 18px; vertical-align: -4px; margin-right: 7px; }
+  .switch { position: relative; width: 36px; height: 22px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: var(--line); border-radius: 999px; cursor: pointer; transition: .15s; }
+  .slider:before { content: ""; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  input:checked + .slider { background: var(--ok); }
+  input:checked + .slider:before { transform: translateX(14px); }
+  .muted { color: var(--muted); font-size: 11.5px; }
+  .cat { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+  .cat:first-child { border-top: 0; }
+  .cat .n { font-weight: 500; }
+  .cat .cnt { color: var(--muted); font-size: 11.5px; min-width: 16px; text-align: right; font-variant-numeric: tabular-nums; }
+  .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 2px; }
+  .seg button { border: 0; background: transparent; color: var(--muted); padding: 2px 9px; border-radius: 5px; font: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer; }
+  .seg button.active { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .seg button.active.hide { color: var(--hide); }
+  .seg button.active.show { color: var(--show); }
+  .sep { border-top: 1px dashed var(--line); margin: 2px 0; }
+  .rowbtn { display: flex; gap: 6px; margin-top: 12px; }
+  .rowbtn button { flex: 1; background: var(--bg); border: 1px solid var(--line); color: var(--fg); border-radius: 7px; padding: 7px 0; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+  .rowbtn button:hover { background: var(--panel); }
+  a { color: var(--fg); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; font-size: 12px; }
+  .warn { background: #fff4e5; color: #8a5a00; padding: 8px 10px; border-radius: 7px; font-size: 12px; margin-bottom: 10px; display: none; }
+  .warn a { color: inherit; }
+  #paused { display: none; color: #8a5a00; margin-bottom: 6px; }
+  .foot { display: flex; justify-content: space-between; margin-top: 12px; align-items: center; }
+</style>
+</head>
+<body>
+<h1><span><img src="icons/icon128.png" alt="">Sift</span>
+  <label class="switch"><input type="checkbox" id="enabled"><span class="slider"></span></label>
+</h1>
+<div class="warn" id="warn">Not connected yet — <a href="#" id="setup">set up in 1 minute</a>.</div>
+<div class="muted" id="paused">Paused · <a href="#" id="resume">resume now</a></div>
+
+<div class="muted" style="display:flex;justify-content:space-between"><span>Label</span><span id="pageNote">hidden on this page</span></div>
+<div id="cats"></div>
+
+<div class="rowbtn">
+  <button id="showAll">Show hidden here</button>
+  <button id="pause">Pause 1 h</button>
+</div>
+
+<div class="foot">
+  <a href="#" id="openOpts">All settings</a>
+  <span class="muted" id="spent"></span>
+</div>
+<script src="defaults.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

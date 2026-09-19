@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sift</title>
+<style>
+  :root {
+    --bg: #fafafa; --panel: #fff; --line: #e6e6e6; --fg: #111; --muted: #6b6b6b; --faint: #9a9a9a;
+    --accent: #111; --ok: #1a7f4b; --bad: #b42318; --hide: #b42318; --show: #1a7f4b;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e0f11; --panel: #16181b; --line: #26292e; --fg: #ececec; --muted: #9a9fa6; --faint: #6b7078; --accent: #ececec; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 2px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 48px; }
+  header img { width: 28px; height: 28px; align-self: center; }
+  header h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -.01em; }
+  header p { margin: 0; color: var(--muted); }
+
+  section { display: grid; grid-template-columns: 200px 1fr; gap: 24px 40px; padding: 32px 0; border-top: 1px solid var(--line); }
+  section:first-of-type { border-top: 0; padding-top: 0; }
+  section > h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  section > h2 small { display: block; font-weight: 400; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  .body { min-width: 0; }
+
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  .field > label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input[type=text], input[type=password], select, textarea {
+    width: 100%; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 12px; font: inherit; outline: none; transition: border-color .12s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--faint); }
+  textarea { resize: vertical; }
+  textarea.mono { font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; min-height: 200px; }
+  .inline { display: flex; gap: 8px; }
+  .inline input { flex: 1; }
+
+  button { font: inherit; cursor: pointer; border-radius: 8px; padding: 9px 16px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-weight: 500; }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  button.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 6px 10px; }
+  button.ghost:hover { color: var(--fg); }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  #keyStatus { font-size: 13px; margin-top: 10px; min-height: 1.4em; }
+  #keyStatus.ok { color: var(--ok); } #keyStatus.err { color: var(--bad); }
+
+  /* labels list */
+  .list { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .cat { display: grid; grid-template-columns: 36px 1fr auto; gap: 14px; align-items: center; padding: 14px 16px; border-top: 1px solid var(--line); }
+  .cat:first-child { border-top: 0; }
+  .cat.ai { border-top: 1px dashed var(--line); }
+  .cat .icon { font-size: 20px; text-align: center; }
+  .cat .name { font-weight: 500; }
+  .cat .desc { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+  .seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+  .seg button { border: 0; background: transparent; color: var(--muted); padding: 4px 12px; border-radius: 6px; font-size: 12.5px; font-weight: 500; }
+  .seg button.active { background: var(--panel); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .seg button.active.hide { color: var(--hide); }
+  .seg button.active.show { color: var(--show); }
+
+  /* toggles */
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; padding-top: 0; }
+  .row .t { font-weight: 500; }
+  .row .d { color: var(--muted); font-size: 12.5px; }
+  .switch { position: relative; width: 40px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; background: var(--line); border-radius: 999px; cursor: pointer; transition: .15s; }
+  .switch span:before { content: ""; position: absolute; width: 20px; height: 20px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .switch input:checked + span { background: var(--ok); }
+  .switch input:checked + span:before { transform: translateX(16px); }
+  .row select { width: auto; min-width: 260px; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .two textarea { min-height: 96px; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .stat { background: var(--panel); padding: 14px 16px; }
+  .stat b { display: block; font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+  details summary::before { content: "▸"; font-size: 11px; transition: transform .12s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details > div { margin-top: 14px; }
+
+  footer { margin-top: 24px; color: var(--faint); font-size: 12.5px; display: flex; justify-content: space-between; align-items: center; }
+  #status { color: var(--muted); }
+  code { font: 12px ui-monospace, Menlo, monospace; background: var(--line); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="icons/icon128.png" alt="">
+    <h1>Sift</h1>
+    <p>Every post on X gets a label. You choose which labels to hide.</p>
+  </header>
+
+  <section>
+    <h2>Connection<small>Labels come from TypeSafe Jev. About $0.00003 per post.</small></h2>
+    <div class="body">
+      <div class="field">
+        <label for="apiKey">API key · <a href="https://console.typesafe.ai/keys" target="_blank">get one</a></label>
+        <div class="inline">
+          <input type="password" id="apiKey" placeholder="tsk_…" autocomplete="off" spellcheck="false">
+          <button class="primary" id="connect">Connect</button>
+        </div>
+        <div id="keyStatus"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Labels<small>Changes apply to open pages right away.</small></h2>
+    <div class="body">
+      <div class="list" id="cats"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Behaviour</h2>
+    <div class="body">
+      <div class="row">
+        <div><div class="t">Filter replies too</div><div class="d">Replies under a post are labelled and hidden the same way. The post you opened is never hidden.</div></div>
+        <label class="switch"><input type="checkbox" id="filterReplies"><span></span></label>
+      </div>
+      <div class="row">
+        <div><div class="t">Show labels on posts</div><div class="d">Two pills next to the author name: the label, and how likely the text is AI-written.</div></div>
+        <label class="switch"><input type="checkbox" id="showBadges"><span></span></label>
+      </div>
+      <div class="row">
+        <div><div class="t">Hidden posts are</div></div>
+        <select id="mode">
+          <option value="hide">Collapsed to one line, with Show / Hide</option>
+          <option value="dim">Dimmed, readable on hover</option>
+          <option value="badge">Labelled only, never hidden</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>People<small>One handle per line, without @. Also available from ⋯ on any hidden post.</small></h2>
+    <div class="body two">
+      <div class="field"><label for="allowlist">Always show</label><textarea id="allowlist" class="mono" placeholder="paulg&#10;karpathy" spellcheck="false"></textarea></div>
+      <div class="field"><label for="blocklist">Always hide</label><textarea id="blocklist" class="mono" placeholder="somespamaccount" spellcheck="false"></textarea></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Stop phrases<small>Matched locally before Jev. A match labels the post Bait, instantly and free.</small></h2>
+    <div class="body">
+      <div class="field">
+        <textarea id="stopPhrases" class="mono" spellcheck="false"></textarea>
+        <div class="hint">One regular expression per line, case-insensitive. Lines starting with <code>#</code> are ignored.</div>
+        <div class="actions"><button class="ghost" id="resetPhrases">Reset to defaults</button></div>
+      </div>
+      <details>
+        <summary>Model</summary>
+        <div class="field"><input type="text" id="model" placeholder="jev-latest" spellcheck="false"></div>
+      </details>
+    </div>
+  </section>
+
+  <section>
+    <h2>Usage</h2>
+    <div class="body">
+      <div class="stats">
+        <div class="stat"><b id="sAnalyzed">0</b><span>labelled</span></div>
+        <div class="stat"><b id="sHidden">0</b><span>hidden</span></div>
+        <div class="stat"><b id="sCost">$0</b><span>spent</span></div>
+        <div class="stat"><b id="sErrors">0</b><span>errors</span></div>
+      </div>
+      <div class="actions">
+        <button class="ghost" id="clearCache">Re-label everything</button>
+        <button class="ghost" id="resetStats">Reset counters</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span id="status">Saved automatically.</span>
+    <button class="ghost" id="save" style="display:none">Save</button>
+  </footer>
+</div>
+
+<script src="defaults.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
