@@ -10,13 +10,22 @@ function flash(msg, err = false) {
 
 function catRow(icon, label, desc, hidden, onChange, extraClass = "") {
   const row = document.createElement("div"); row.className = "cat " + extraClass;
-  row.innerHTML = `<div class="icon">${icon}</div><div><div class="name"></div><div class="desc"></div></div>
-    <div class="seg"><button class="show ${hidden ? "" : "active"}"></button><button class="hide ${hidden ? "active" : ""}"></button></div>`;
-  row.querySelector(".name").textContent = label;
-  row.querySelector(".desc").textContent = desc;
-  row.querySelector(".show").textContent = XQF_t("show", undefined, "Show");
-  row.querySelector(".hide").textContent = XQF_t("hide", undefined, "Hide");
-  const [bs, bh] = row.querySelectorAll("button");
+  const iconEl = document.createElement("div"); iconEl.className = "icon"; iconEl.textContent = icon;
+  const copy = document.createElement("div");
+  const name = document.createElement("div"); name.className = "name"; name.textContent = label;
+  const description = document.createElement("div"); description.className = "desc"; description.textContent = desc;
+  copy.append(name, description);
+
+  const seg = document.createElement("div"); seg.className = "seg";
+  const bs = document.createElement("button");
+  bs.className = `show${hidden ? "" : " active"}`;
+  bs.textContent = XQF_t("show", undefined, "Show");
+  const bh = document.createElement("button");
+  bh.className = `hide${hidden ? " active" : ""}`;
+  bh.textContent = XQF_t("hide", undefined, "Hide");
+  seg.append(bs, bh);
+  row.append(iconEl, copy, seg);
+
   const set = (h) => { bs.classList.toggle("active", !h); bh.classList.toggle("active", h); onChange(h); };
   bs.addEventListener("click", () => set(false));
   bh.addEventListener("click", () => set(true));
