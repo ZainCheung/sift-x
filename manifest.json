@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Sift",
   "short_name": "Sift",
-  "version": "0.6.1",
+  "version": "0.8.1",
   "description": "Labels every post and reply on X (Substance, Humor, Chit-chat, Promo, Junk, AI-written) with TypeSafe Jev. You choose what to hide.",
   "permissions": [
     "storage",

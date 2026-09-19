@@ -1,14 +1,61 @@
 const $ = (id) => document.getElementById(id);
 let settings, counts = {};
 
+const STRICT = [
+  { key: "relaxed", label: "Relaxed", value: 0.35, desc: "Only clearly non-tech posts are hidden" },
+  { key: "normal",  label: "Normal",  value: 0.5,  desc: "" },
+  { key: "strict",  label: "Strict",  value: 0.65, desc: "Anything not clearly tech is hidden" }
+];
+
 async function activeTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab && /^https:\/\/(x|twitter)\.com\//.test(tab.url || "") ? tab : null;
 }
 
-function row(icon, label, hidden, count, onChange) {
+// Which preset matches the current hide map, if any.
+function currentPreset() {
+  for (const [k, p] of Object.entries(XQF_PRESETS)) {
+    const same = Object.keys(p.hide).every((c) => !!settings.hide[c] === p.hide[c]) &&
+      (settings.hideAI !== false) === p.hideAI && (settings.hideOffTopic !== false) === p.hideOffTopic;
+    if (same) return k;
+  }
+  return null;
+}
+
+function segment(box, items, activeKey, onPick) {
+  box.innerHTML = "";
+  for (const it of items) {
+    const b = document.createElement("button");
+    b.textContent = it.label; b.classList.toggle("active", it.key === activeKey);
+    b.addEventListener("click", () => onPick(it.key));
+    box.appendChild(b);
+  }
+}
+
+function renderPreset() {
+  const cur = currentPreset();
+  segment($("preset"), Object.entries(XQF_PRESETS).map(([key, p]) => ({ key, label: p.label })), cur, async (key) => {
+    const p = XQF_PRESETS[key];
+    settings.hide = { ...p.hide }; settings.hideAI = p.hideAI; settings.hideOffTopic = p.hideOffTopic;
+    await chrome.storage.sync.set({ hide: settings.hide, hideAI: p.hideAI, hideOffTopic: p.hideOffTopic });
+    renderPreset(); renderCats();
+  });
+  $("presetDesc").textContent = cur ? XQF_PRESETS[cur].desc : "Custom — see labels below";
+}
+
+function renderStrict() {
+  const t = Number(settings.techThreshold) || 0.5;
+  const cur = STRICT.reduce((a, b) => Math.abs(b.value - t) < Math.abs(a.value - t) ? b : a).key;
+  segment($("strict"), STRICT, cur, async (key) => {
+    settings.techThreshold = STRICT.find((s) => s.key === key).value;
+    await chrome.storage.sync.set({ techThreshold: settings.techThreshold });
+    renderStrict();
+  });
+}
+
+function row(label, hidden, count, onChange) {
   const r = document.createElement("div"); r.className = "cat";
-  r.innerHTML = `<span>${icon}</span><span class="n">${label}</span><span class="cnt">${count || ""}</span>
+  r.innerHTML = `<span class="n">${label}</span><span class="cnt">${count || ""}</span>
     <span class="seg"><button class="show ${hidden ? "" : "active"}">Show</button><button class="hide ${hidden ? "active" : ""}">Hide</button></span>`;
   const [bs, bh] = r.querySelectorAll("button");
   const set = (h) => { bs.classList.toggle("active", !h); bh.classList.toggle("active", h); onChange(h); };
@@ -19,14 +66,18 @@ function row(icon, label, hidden, count, onChange) {
 function renderCats() {
   const box = $("cats"); box.innerHTML = "";
   for (const [k, c] of Object.entries(XQF_CATEGORIES)) {
-    box.appendChild(row(c.icon, c.label, !!settings.hide[k], counts[k], async (h) => {
+    box.appendChild(row(c.label, !!settings.hide[k], counts[k], async (h) => {
       settings.hide = { ...settings.hide, [k]: h };
       await chrome.storage.sync.set({ hide: settings.hide });
+      renderPreset();
     }));
   }
   const sep = document.createElement("div"); sep.className = "sep"; box.appendChild(sep);
-  box.appendChild(row(XQF_AI.icon, XQF_AI.label, settings.hideAI !== false, counts.ai, async (h) => {
-    settings.hideAI = h; await chrome.storage.sync.set({ hideAI: h });
+  box.appendChild(row(XQF_TOPIC.label, settings.hideOffTopic !== false, counts.offtopic, async (h) => {
+    settings.hideOffTopic = h; await chrome.storage.sync.set({ hideOffTopic: h }); renderPreset();
+  }));
+  box.appendChild(row(XQF_AI.label, settings.hideAI !== false, counts.ai, async (h) => {
+    settings.hideAI = h; await chrome.storage.sync.set({ hideAI: h }); renderPreset();
   }));
 }
 
@@ -46,8 +97,8 @@ function renderPaused() {
   const tab = await activeTab();
   if (tab) {
     try { counts = (await chrome.tabs.sendMessage(tab.id, { type: "pageStats" })).counts || {}; } catch { counts = {}; }
-  } else { $("showAll").disabled = true; $("showAll").style.opacity = .5; $("pageNote").textContent = ""; }
-  renderCats();
+  } else { $("showAll").disabled = true; $("showAll").style.opacity = .5; }
+  renderPreset(); renderStrict(); renderCats();
 
   const { stats } = await chrome.runtime.sendMessage({ type: "stats" });
   $("spent").textContent = `${stats.analyzed.toLocaleString()} labelled · $${stats.cost.toFixed(3)}`;

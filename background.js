@@ -16,10 +16,10 @@ async function loadState() {
   if (settings && cache && stats) return;
   const s = await chrome.storage.sync.get(XQF_DEFAULTS);
   settings = { ...XQF_DEFAULTS, ...s };
-  // verdict shape changed in 0.4 (category): drop stale cache entries
+  // verdict shape changed (0.4 category, 0.6 tech): drop stale cache entries
   const l0 = await chrome.storage.local.get(["xqf_schema"]);
-  if (l0.xqf_schema !== 5) {
-    await chrome.storage.local.set({ [CACHE_KEY]: {}, xqf_schema: 5 });
+  if (l0.xqf_schema !== 6) {
+    await chrome.storage.local.set({ [CACHE_KEY]: {}, xqf_schema: 6 });
     // old per-fine-category hide map -> new five labels
     const old = (await chrome.storage.sync.get(["hide"])).hide || {};
     if ("bait" in old || "insight" in old) {
@@ -80,6 +80,7 @@ function toVerdict(resp) {
     confidence: c.confidence ?? 0,
     probs: c.probabilities || {},
     ai: a.ai_written?.noul ?? 0,
+    tech: a.tech?.noul ?? 1,
     model: resp.model,
     t: Date.now()
   };

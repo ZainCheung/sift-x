@@ -10,9 +10,19 @@ const XQF_CATEGORIES = {
 };
 const XQF_FINE_TO_UI = { insight: "substance", news: "substance", discussion: "substance", humor: "humor", personal: "chitchat", promo: "promo", bait: "junk", filler: "junk", ad: "junk" };
 const XQF_FINE_LABEL = { insight: "insight", news: "news", discussion: "discussion", humor: "humor", personal: "personal", promo: "promo", bait: "engagement bait", filler: "filler", ad: "ad" };
+// Short word shown on the post tag.
+const XQF_TAG = { insight: "Insight", news: "News", discussion: "Discussion", humor: "Humor", personal: "Chat", promo: "Promo", bait: "Bait", filler: "Filler", ad: "Ad" };
 
-// Orthogonal flag: any label can also be AI-written.
+// One-tap presets: what to hide.
+const XQF_PRESETS = {
+  signal:     { label: "Signal",     desc: "Only substantive tech posts", hide: { substance: false, humor: true,  chitchat: true,  promo: true,  junk: true }, hideAI: true, hideOffTopic: true },
+  balanced:   { label: "Balanced",   desc: "Tech, including humor and chat", hide: { substance: false, humor: false, chitchat: false, promo: false, junk: true }, hideAI: true, hideOffTopic: true },
+  everything: { label: "Everything", desc: "Label only, hide nothing", hide: { substance: false, humor: false, chitchat: false, promo: false, junk: false }, hideAI: false, hideOffTopic: false }
+};
+
+// Orthogonal flags: any label can also be AI-written, and any label can be off-topic.
 const XQF_AI = { icon: "🤖", label: "AI-written", hide: true, desc: "Reads like ChatGPT wrote it: “It's not X. It's Y.”, rule-of-three lists, emoji bullets, buzzwords, zero personal detail" };
+const XQF_TOPIC = { icon: "🌐", label: "Off-topic", hide: true, desc: "Not about tech: gossip, relationships, entertainment, sports, politics, lifestyle, memes with no technical angle" };
 
 const XQF_DEFAULTS = {
   enabled: true,
@@ -22,11 +32,17 @@ const XQF_DEFAULTS = {
   // which categories to hide: {insight:false, ..., bait:true}
   hide: Object.fromEntries(Object.entries(XQF_CATEGORIES).map(([k, c]) => [k, c.hide])),
   hideAI: true,
+  // hide posts that are not about technology / software / AI / science / the tech industry
+  hideOffTopic: true,
+  // P(tech) below which a post counts as off-topic
+  techThreshold: 0.5,
   // also classify and hide replies under a post (the focal post itself is never hidden)
   filterReplies: true,
   // "hide" = collapse into a one-line bar with Show, "dim" = fade, "badge" = label only
   mode: "hide",
   showBadges: true,
+  // hide X's right column (Premium upsell, Today's News, Trending, Who to follow) and let posts use the width
+  hideSidebar: true,
   // stop phrases: one regex per line (case-insensitive). Matched locally, hides instantly, no API call.
   stopPhrases: [
     "\\bbookmark this\\b",
@@ -53,20 +69,28 @@ const XQF_DEFAULTS = {
   blocklist: ""
 };
 
-// Two questions to Jev per post, one request.
+// Three questions to Jev per post, one request.
 const XQF_QUESTIONS = {
   category: {
     type: "choice",
-    instructions: "Which single category best describes this post? The state may include the post text, a quoted post, a link card or article title, and what media is attached. A photo or video with a short caption, an emoji reaction, or a quote-post with only an emoji is usually 'personal'. If it is a reply, judge whether the reply adds anything.",
+    instructions: "Which single category best describes this post? The state may include the post text, a quoted post, a link card or article title, what media is attached, and — for replies — the post being replied to (in_reply_to). A photo or video with a short caption, an emoji reaction, or a quote-post with only an emoji is usually 'personal'. A screenshot of a chat conversation, a viral story about relationships / dating / family / celebrities, a rhetorical 'would you...?' prompt, or a meme is 'humor' or 'personal' — never 'insight' or 'news', no matter how many likes it has. For a reply, a short genuine reaction from a real person to the parent post is 'personal', not 'filler'.",
     criteria: {
-      insight: "original analysis, first-hand experience, technical detail, specific data or numbers, a concrete lesson learned",
+      insight: "original analysis, first-hand experience, technical detail, specific data or numbers, a concrete lesson learned. Must actually teach or explain something.",
       news: "reports a concrete event, release, paper, announcement or fact with specifics",
       discussion: "a genuine question or opinion with enough context that a thoughtful person could reply substantively",
-      humor: "a joke, meme caption, pun or witty observation whose point is to be funny",
-      personal: "casual personal update, a photo or video of daily life, plain reaction or emoji, thanks, agreement, congratulations, a short comment from a real person",
+      humor: "a joke, meme caption, pun, funny screenshot, or witty observation whose point is to be funny",
+      personal: "casual personal update, a photo or video of daily life, plain reaction or emoji, thanks, agreement, congratulations, a short specific comment from a real person on the parent post ('效率也太高了', 'tried it, works great', 'nice, what model?')",
       promo: "selling or pushing a course, product, newsletter, waitlist, affiliate link, or 'check out my ...'",
       bait: "written to farm engagement: 'bookmark this', 'reply X and I'll DM', 'most people don't know', ragebait, vague promises of a secret system, contentless 'agree?' / 'thoughts?', follower farming",
-      filler: "a text-only reply or post that carries nothing: 'gm', 'this.', 'W', 'so true', generic praise, one word — but NOT an emoji reaction to a quoted post or a photo, those are personal"
+      filler: "a text-only reply or post with literally nothing to it: 'gm', '.', 'W', 'this', 'first', 'so true', a single generic word, a copy-pasted comment that could be under any post — but NOT a short reaction that clearly refers to the parent post, and NOT an emoji reaction to a quoted post or a photo, those are personal"
+    }
+  },
+  tech: {
+    type: "noul",
+    instructions: "Is this post about technology? For a reply, judge by the conversation it is in (in_reply_to): a reaction under a tech post counts as tech.",
+    criteria: {
+      true: "software, programming, AI / ML / LLMs, developer tools, open source, databases, infrastructure, hardware, chips, science, engineering, math, startups and the tech industry, product launches of tech products, tech policy",
+      false: "relationships, dating, family, gossip, celebrities, entertainment, sports, politics unrelated to tech, lifestyle, food, travel, fitness, finance tips, motivation, generic life advice, viral chat screenshots, memes with no technical angle"
     }
   },
   ai_written: {
@@ -80,5 +104,5 @@ const XQF_QUESTIONS = {
 };
 
 if (typeof globalThis !== "undefined") {
-  Object.assign(globalThis, { XQF_DEFAULTS, XQF_CATEGORIES, XQF_FINE_TO_UI, XQF_FINE_LABEL, XQF_AI, XQF_QUESTIONS });
+  Object.assign(globalThis, { XQF_DEFAULTS, XQF_CATEGORIES, XQF_FINE_TO_UI, XQF_FINE_LABEL, XQF_TAG, XQF_PRESETS, XQF_AI, XQF_TOPIC, XQF_QUESTIONS });
 }

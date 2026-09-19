@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
-const SIMPLE = ["apiKey", "model", "mode", "filterReplies", "showBadges", "stopPhrases", "allowlist", "blocklist"];
-let hide = {}; let hideAI = true;
+const SIMPLE = ["apiKey", "model", "mode", "filterReplies", "showBadges", "hideSidebar", "stopPhrases", "allowlist", "blocklist"];
+let hide = {}; let hideAI = true; let hideOffTopic = true;
 
 function flash(msg, err = false) {
   const s = $("status"); s.textContent = msg; s.style.color = err ? "var(--bad)" : "";
@@ -23,18 +23,19 @@ function renderCats() {
   for (const [k, c] of Object.entries(XQF_CATEGORIES)) {
     box.appendChild(catRow(c.icon, c.label, c.desc, !!hide[k], (h) => { hide = { ...hide, [k]: h }; autosave(); }));
   }
+  box.appendChild(catRow(XQF_TOPIC.icon, XQF_TOPIC.label, XQF_TOPIC.desc + ". Applies on top of any label; replies are judged by the post they answer.", hideOffTopic, (h) => { hideOffTopic = h; autosave(); }, "ai"));
   box.appendChild(catRow(XQF_AI.icon, XQF_AI.label, XQF_AI.desc + ". Applies on top of any label.", hideAI, (h) => { hideAI = h; autosave(); }, "ai"));
 }
 
 function fill(s) {
   for (const f of SIMPLE) { const el = $(f); if (el.type === "checkbox") el.checked = !!s[f]; else el.value = s[f] ?? ""; }
-  hide = { ...XQF_DEFAULTS.hide, ...(s.hide || {}) }; hideAI = s.hideAI !== false;
+  hide = { ...XQF_DEFAULTS.hide, ...(s.hide || {}) }; hideAI = s.hideAI !== false; hideOffTopic = s.hideOffTopic !== false;
   renderCats();
   if (s.apiKey) setKeyStatus("Connected", true);
 }
 
 function collect() {
-  const out = { hide, hideAI };
+  const out = { hide, hideAI, hideOffTopic };
   for (const f of SIMPLE) { const el = $(f); out[f] = el.type === "checkbox" ? el.checked : el.value.trim(); }
   if (!out.model) out.model = "jev-latest";
   return out;
@@ -64,7 +65,7 @@ $("connect").addEventListener("click", async () => {
 });
 $("apiKey").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 
-for (const id of ["mode", "filterReplies", "showBadges", "model"]) $(id).addEventListener("change", autosave);
+for (const id of ["mode", "filterReplies", "showBadges", "hideSidebar", "model"]) $(id).addEventListener("change", autosave);
 for (const id of ["allowlist", "blocklist", "stopPhrases"]) $(id).addEventListener("blur", autosave);
 $("save").addEventListener("click", save);
 $("resetPhrases").addEventListener("click", () => { $("stopPhrases").value = XQF_DEFAULTS.stopPhrases; autosave(); });

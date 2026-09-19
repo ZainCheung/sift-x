@@ -6,6 +6,8 @@
   const uiOf = (fine) => XQF_FINE_TO_UI[fine] || "chitchat";
   const fineLabel = (fine) => XQF_FINE_LABEL[fine] || fine;
   const AI_AT = 0.7; // P(ai_written) at which a post counts as AI-written
+  const AI_SHOW = 0.4; // show the AI % on the tag only from here up — below that it is noise
+  const techAt = () => Number(settings?.techThreshold) || 0.5;
   const pageCounts = {}; // category -> hidden count on this page
 
   let settings = null;
@@ -55,6 +57,7 @@
   function teardown() {
     if (torn) return; torn = true;
     obs?.disconnect(); if (tick) clearInterval(tick);
+    document.documentElement.removeAttribute("data-sift-sidebar");
     document.querySelectorAll(`article[${ATTR}]`).forEach((a) => { resetArticle(a); a.removeAttribute(ATTR); a.removeAttribute("data-sift-id"); });
     const t = el("div", "sift-toast");
     t.appendChild(el("span", null, "Sift was updated — reload this page to keep filtering."));
@@ -73,13 +76,15 @@
       if (area !== "sync") return;
       await loadSettings();
       if (settings?.apiKey) toast(null);
+      applyTheme();
       reevaluateAll();
     });
   } catch { /* orphaned */ }
 
   try { chrome.runtime.onMessage.addListener((msg, _s, reply) => {
     if (msg.type === "showAll") {
-      document.querySelectorAll(".sift-bar:not(.sift-open) .sift-show").forEach((b) => b.click());
+      document.querySelectorAll(`[data-testid="cellInnerDiv"].sift-hidden`).forEach((c) => c.__siftSet?.(true));
+      regroup();
       reply({ ok: true });
     } else if (msg.type === "pageStats") {
       reply({ hidden: pageHidden, counts: pageCounts });
@@ -144,7 +149,7 @@
     const quoted = article.querySelectorAll(`[data-testid="tweetText"]`)[1]?.innerText?.trim() || "";
     const quotedAuthor = article.querySelectorAll(`[data-testid="User-Name"]`)[1]?.innerText?.split("\n")?.[0] || "";
 
-    return { id, handle, displayName, text, hasMedia, hasLink, isAd, isReply, isFocal, quoted, quotedAuthor, metrics,
+    return { id, el: article, handle, displayName, text, hasMedia, hasLink, isAd, isReply, isFocal, quoted, quotedAuthor, metrics,
       media: hasVideo ? "video" : photos.length ? `${photos.length} photo${photos.length > 1 ? "s" : ""}` : "", alts, card, isArticle };
   }
 
@@ -158,7 +163,27 @@
     if (t.alts.length) s.image_descriptions = t.alts.join(" | ").slice(0, 400);
     if (t.quoted) s.quoted_post = { author: t.quotedAuthor, text: t.quoted.slice(0, 600) };
     if (t.card) s[t.isArticle ? "article" : "link_card"] = t.card;
+    if (!t.isFocal) {
+      const p = focalPost();
+      // in-thread replies on a /status/ page carry no "Replying to" line; anything below the focal post is a reply to it
+      if (p && p.id !== t.id && (t.isReply || (t.el && p.el && p.el.compareDocumentPosition(t.el) & Node.DOCUMENT_POSITION_FOLLOWING))) {
+        s.is_reply = true;
+        s.in_reply_to = { author: p.author, text: p.text };
+      }
+    }
     return s;
+  }
+
+  // On a /status/ page the focal post is the conversation root; replies are judged in its context.
+  let focalCache = { path: "", post: null };
+  function focalPost() {
+    if (focalCache.path === location.pathname && focalCache.post?.el?.isConnected) return focalCache.post;
+    if (!/\/status\/\d+/.test(location.pathname)) return null;
+    const a = document.querySelector(`article[data-testid="tweet"][tabindex="-1"]`);
+    const f = a && extract(a);
+    if (!f || !(f.text || f.quoted || f.card)) return null;
+    focalCache = { path: location.pathname, post: { id: f.id, el: a, author: f.handle, text: (f.text || f.quoted || f.card).slice(0, 600) } };
+    return focalCache.post;
   }
 
   // ---------- decision ----------
@@ -168,21 +193,25 @@
     return v?.category || null;
   }
   function isAI(v) { return !!v && v.ai >= AI_AT; }
+  function isOffTopic(v) { return !!v && typeof v.tech === "number" && v.tech < techAt(); }
 
+  // reason: short plain words for the collapsed bar. cat: bucket for counts / colour.
   function decide(t, v) {
     const h = t.handle.toLowerCase();
-    if (h && allow.has(h)) return { hide: false, reason: "allowlisted" };
-    if (h && block.has(h)) return { hide: true, reason: `you hide @${t.handle}`, cat: "blocked" };
-    if (t.isAd) return { hide: !!settings.hide.junk, reason: "🚫 Junk · ad", cat: "junk" };
+    if (h && allow.has(h)) return { hide: false, reason: "always shown", cat: "kept" };
+    if (h && block.has(h)) return { hide: true, reason: "always hidden", cat: "blocked" };
+    if (t.isAd) return { hide: !!settings.hide.junk, reason: "ad", cat: "junk" };
     for (const re of stopRegexes) {
-      if (re.test(t.text)) return { hide: !!settings.hide.junk, reason: "🚫 Junk · stop phrase", cat: "junk", local: true };
+      if (re.test(t.text)) return { hide: !!settings.hide.junk, reason: "bait", cat: "junk", local: true };
     }
     if (!v) return null;
     const ui = uiOf(v.category);
     const reasons = [];
-    if (settings.hide[ui]) reasons.push(`${CAT[ui][0]} ${CAT[ui][1]}${ui !== v.category ? ` · ${fineLabel(v.category)}` : ""}`);
-    if (settings.hideAI && isAI(v)) reasons.push(`🤖 AI-written ${pct(v.ai)}`);
-    return { hide: reasons.length > 0, reason: reasons.join(" · "), cat: reasons.length ? (settings.hide[ui] ? ui : "ai") : ui };
+    if (settings.hide[ui]) reasons.push(XQF_TAG[v.category]?.toLowerCase() || CAT[ui][1].toLowerCase());
+    if (settings.hideOffTopic && isOffTopic(v)) reasons.push("off-topic");
+    if (settings.hideAI && isAI(v)) reasons.push(`AI ${pct(v.ai)}`);
+    const cat = !reasons.length ? ui : settings.hide[ui] ? ui : (settings.hideOffTopic && isOffTopic(v)) ? "offtopic" : "ai";
+    return { hide: reasons.length > 0, reason: reasons.join(" · "), cat };
   }
 
   // ---------- rendering ----------
@@ -190,41 +219,31 @@
 
   function resetArticle(article) {
     const c = cell(article);
-    c.classList.remove("sift-hidden", "sift-dimmed", "sift-pending");
-    c.querySelector(".sift-bar")?.remove();
-    article.querySelectorAll(".sift-badge").forEach((b) => b.remove());
-    
+    c.classList.remove("sift-hidden", "sift-dimmed", "sift-pending", "sift-grouped", "sift-signal");
+    c.querySelectorAll(".sift-bar").forEach((b) => b.remove());
+    delete c.dataset.siftReason; delete c.dataset.siftCat; delete c.__siftSet;
+    article.querySelectorAll(".sift-tag").forEach((b) => b.remove());
   }
 
+  // One quiet tag next to the author. Colour carries the verdict; the AI % only appears when it matters.
   function badge(article, v, decision) {
-    if (!settings.showBadges) return;
-    const c = decision?.cat && CAT[decision.cat] ? decision.cat : (v ? uiOf(v.category) : null);
-    if (!c) return;
-    article.querySelector(".sift-badge")?.remove();
-    const b = document.createElement("div");
-    b.className = `sift-badge sift-c-${c}`;
-    let txt = `${CAT[c][0]} ${CAT[c][1]}`;
-    if (decision?.hide) txt += " · hidden";
-    b.textContent = txt.trim();
-    b.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); });
-    // always show how likely the text is machine-written
-    let ai = null;
-    if (v) {
-      article.querySelector(".sift-ai")?.remove();
-      ai = document.createElement("div");
-      const lvl = v.ai >= AI_AT ? "high" : v.ai >= 0.4 ? "mid" : "low";
-      ai.className = `sift-badge sift-ai sift-ai-${lvl}`;
-      ai.textContent = `🤖 ${pct(v.ai)}`;
-      ai.title = `AI-written likelihood ${pct(v.ai)} — ${lvl === "high" ? "reads like an LLM wrote it" : lvl === "mid" ? "unsure" : "reads human"}`;
-      ai.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); });
-    }
-    if (v) {
-      const top = Object.entries(v.probs || {}).sort((a, b2) => b2[1] - a[1]).slice(0, 3).map(([k, p]) => `${k} ${pct(p)}`).join(", ");
-      b.title = `Sift · ${CAT[c][1]} — ${fineLabel(v.category)} (confidence ${pct(v.confidence)})\n${top}\nAI-written ${pct(v.ai)}`;
-    }
+    if (!settings.showBadges || !v) return;
+    article.querySelectorAll(".sift-tag").forEach((x) => x.remove());
     const header = article.querySelector(`[data-testid="User-Name"]`);
-    if (header) { b.classList.add("sift-inline"); header.appendChild(b); if (ai) { ai.classList.add("sift-inline"); header.appendChild(ai); } }
-    else { article.appendChild(b); if (ai) { ai.style.right = "auto"; ai.style.left = "16px"; article.appendChild(ai); } }
+    if (!header) return;
+    const ui = uiOf(v.category);
+    const off = isOffTopic(v);
+    const tone = decision?.hide ? "muted" : off ? "offtopic" : ui;
+    const tag = el("span", `sift-tag sift-t-${tone}`);
+    const word = off && !decision?.hide ? "Off-topic" : (XQF_TAG[v.category] || CAT[ui][1]);
+    tag.appendChild(el("span", "sift-tag-word", decision?.hide ? `Hidden · ${decision.reason}` : word));
+    if (v.ai >= AI_SHOW && !decision?.hide) tag.appendChild(el("span", `sift-tag-ai ${v.ai >= AI_AT ? "high" : ""}`, `AI ${pct(v.ai)}`));
+    const top = Object.entries(v.probs || {}).sort((a, b2) => b2[1] - a[1]).slice(0, 3).map(([k, p]) => `${fineLabel(k)} ${pct(p)}`).join(" · ");
+    tag.title = `${top}\nTech ${pct(v.tech ?? 1)} · AI-written ${pct(v.ai)}`;
+    tag.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); });
+    header.appendChild(tag);
+    // substantive + clearly tech: a hairline accent so the eye finds it while scrolling
+    cell(article).classList.toggle("sift-signal", !decision?.hide && ui === "substance" && (v.tech ?? 1) >= 0.8);
   }
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -238,22 +257,27 @@
     if (c.querySelector(".sift-bar")) return;
     pageHidden++;
     pageCounts[decision.cat] = (pageCounts[decision.cat] || 0) + 1;
+    c.dataset.siftReason = decision.reason; c.dataset.siftCat = decision.cat;
 
     const bar = el("div", "sift-bar");
     // never let clicks on our bar reach X's "open this post" handler
     bar.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); });
     const who = t.handle ? `@${t.handle}` : "post";
-    bar.appendChild(el("span", "sift-bar-text", `${who} · ${decision.reason}`));
+    const text = el("span", "sift-bar-text");
+    text.appendChild(el("span", "sift-bar-who", who));
+    text.appendChild(el("span", "sift-bar-why", decision.reason));
+    bar.appendChild(text);
     const actions = el("span", "sift-actions");
     const show = el("button", "sift-show", "Show");
-    show.addEventListener("click", (e) => {
-      e.stopPropagation(); e.preventDefault();
-      const open = c.classList.toggle("sift-hidden") === false; // toggled off => now open
+    // set(open) is the single way to reveal / re-collapse this cell; group bars call it for every member
+    c.__siftSet = (open) => {
+      c.classList.toggle("sift-hidden", !open);
       bar.classList.toggle("sift-open", open);
       show.textContent = open ? "Hide" : "Show";
       article.setAttribute(ATTR, open ? "revealed" : "hidden");
       if (open) badge(article, v, decision);
-    });
+    };
+    show.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); c.__siftSet(!bar.classList.contains("sift-open")); regroup(); });
     actions.appendChild(show);
     if (t.handle) {
       const more = el("button", "sift-more", "⋯");
@@ -270,6 +294,51 @@
     bar.appendChild(actions);
     c.prepend(bar);
     send({ type: "hidden", count: 1 });
+    regroup();
+  }
+
+  // Consecutive hidden posts fold into one line: "4 posts hidden · off-topic 3, junk 1  Show".
+  let groupTimer = null;
+  function regroup() {
+    if (groupTimer) return;
+    groupTimer = setTimeout(() => { groupTimer = null; regroupNow(); }, 50);
+  }
+  function regroupNow() {
+    document.querySelectorAll(".sift-group").forEach((g) => g.remove());
+    const cells = [...document.querySelectorAll(`[data-testid="cellInnerDiv"]`)];
+    let run = [];
+    const flush = () => {
+      run.forEach((c) => c.classList.remove("sift-grouped"));
+      if (run.length >= 2) {
+        const first = run[0];
+        run.forEach((c) => c.classList.add("sift-grouped"));
+        const counts = {};
+        run.forEach((c) => { const r = c.dataset.siftReason || "hidden"; counts[r] = (counts[r] || 0) + 1; });
+        const why = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([r, n]) => `${r} ${n}`).join(", ");
+        const g = el("div", "sift-bar sift-group");
+        g.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); });
+        const text = el("span", "sift-bar-text");
+        text.appendChild(el("span", "sift-bar-who", `${run.length} posts hidden`));
+        text.appendChild(el("span", "sift-bar-why", why));
+        g.appendChild(text);
+        const show = el("button", "sift-show", "Show");
+        const members = run;
+        show.addEventListener("click", (e) => {
+          e.stopPropagation(); e.preventDefault();
+          members.forEach((c) => c.__siftSet?.(true));
+          regroup();
+        });
+        g.appendChild(show);
+        first.prepend(g);
+      }
+      run = [];
+    };
+    for (const c of cells) {
+      const hidden = c.classList.contains("sift-hidden") && c.querySelector(".sift-bar:not(.sift-group)") && !c.querySelector(".sift-bar.sift-open");
+      if (hidden) run.push(c);
+      else if (run.length) flush();
+    }
+    if (run.length) flush();
   }
 
   function finish(article, t, v) {
@@ -277,7 +346,7 @@
     const d = decide(t, v) || { hide: false, reason: "" };
     article.setAttribute(ATTR, d.hide ? "hidden" : "kept");
     if (d.hide && !t.isFocal) applyHide(article, t, d, v);
-    else badge(article, v, d);
+    else badge(article, v, t.isFocal ? { ...d, hide: false } : d); // the post you opened is never hidden, so don't say it is
   }
 
   // ---------- toast (setup / paused) ----------
@@ -373,6 +442,7 @@
     const bg = getComputedStyle(document.body).backgroundColor || "";
     const m = bg.match(/\d+/g); const lum = m ? (Number(m[0]) + Number(m[1]) + Number(m[2])) / 3 : 0;
     document.documentElement.setAttribute("data-sift-theme", lum > 128 ? "light" : "dark");
+    document.documentElement.setAttribute("data-sift-sidebar", active() && settings.hideSidebar !== false ? "off" : "on");
   }
 
   // ---------- boot ----------
@@ -398,6 +468,7 @@
         if (t && prev && prev !== t.id) { a.removeAttribute(ATTR); a.removeAttribute("data-sift-id"); resetArticle(a); }
       });
       scan();
+      regroup();
     }, 1500);
   })();
 })();
