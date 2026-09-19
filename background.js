@@ -1,5 +1,5 @@
 // Service worker: talks to TypeSafe Jev, caches verdicts, keeps stats.
-importScripts("defaults.js");
+importScripts("i18n.js", "defaults.js");
 
 const API_URL = "https://api.typesafe.ai/v1/systemone";
 const CACHE_KEY = "xqf_cache";
@@ -135,7 +135,7 @@ chrome.runtime.onInstalled.addListener(async (d) => {
     for (const t of tabs) {
       try {
         await chrome.scripting.insertCSS({ target: { tabId: t.id }, files: ["content.css"] });
-        await chrome.scripting.executeScript({ target: { tabId: t.id }, files: ["defaults.js", "content.js"] });
+        await chrome.scripting.executeScript({ target: { tabId: t.id }, files: ["i18n.js", "defaults.js", "content.js"] });
       } catch { /* tab not scriptable */ }
     }
   } catch { /* ignore */ }

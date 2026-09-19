@@ -2,6 +2,7 @@
 (() => {
   if (window.__siftLoaded) return; window.__siftLoaded = true;
   const ATTR = "data-sift";
+  const tx = (key, fallback, substitutions) => XQF_t(key, substitutions, fallback);
   const CAT = Object.fromEntries(Object.entries(XQF_CATEGORIES).map(([k, c]) => [k, [c.icon, c.label]]));
   const uiOf = (fine) => XQF_FINE_TO_UI[fine] || "chitchat";
   const fineLabel = (fine) => XQF_FINE_LABEL[fine] || fine;
@@ -60,8 +61,8 @@
     document.documentElement.removeAttribute("data-sift-sidebar");
     document.querySelectorAll(`article[${ATTR}]`).forEach((a) => { resetArticle(a); a.removeAttribute(ATTR); a.removeAttribute("data-sift-id"); });
     const t = el("div", "sift-toast");
-    t.appendChild(el("span", null, "Sift was updated — reload this page to keep filtering."));
-    const b = el("button", null, "Reload"); b.addEventListener("click", () => location.reload()); t.appendChild(b);
+    t.appendChild(el("span", null, tx("contentUpdated", "Sift was updated — reload this page to keep filtering.")));
+    const b = el("button", null, tx("contentReload", "Reload")); b.addEventListener("click", () => location.reload()); t.appendChild(b);
     document.body.appendChild(t);
   }
 
@@ -198,18 +199,18 @@
   // reason: short plain words for the collapsed bar. cat: bucket for counts / colour.
   function decide(t, v) {
     const h = t.handle.toLowerCase();
-    if (h && allow.has(h)) return { hide: false, reason: "always shown", cat: "kept" };
-    if (h && block.has(h)) return { hide: true, reason: "always hidden", cat: "blocked" };
-    if (t.isAd) return { hide: !!settings.hide.junk, reason: "ad", cat: "junk" };
+    if (h && allow.has(h)) return { hide: false, reason: tx("alwaysShown", "always shown"), cat: "kept" };
+    if (h && block.has(h)) return { hide: true, reason: tx("alwaysHidden", "always hidden"), cat: "blocked" };
+    if (t.isAd) return { hide: !!settings.hide.junk, reason: tx("ad", "ad"), cat: "junk" };
     for (const re of stopRegexes) {
-      if (re.test(t.text)) return { hide: !!settings.hide.junk, reason: "bait", cat: "junk", local: true };
+      if (re.test(t.text)) return { hide: !!settings.hide.junk, reason: tx("bait", "bait"), cat: "junk", local: true };
     }
     if (!v) return null;
     const ui = uiOf(v.category);
     const reasons = [];
-    if (settings.hide[ui]) reasons.push(XQF_TAG[v.category]?.toLowerCase() || CAT[ui][1].toLowerCase());
-    if (settings.hideOffTopic && isOffTopic(v)) reasons.push("off-topic");
-    if (settings.hideAI && isAI(v)) reasons.push(`AI ${pct(v.ai)}`);
+    if (settings.hide[ui]) reasons.push(XQF_TAG[v.category] || CAT[ui][1]);
+    if (settings.hideOffTopic && isOffTopic(v)) reasons.push(tx("offTopic", "off-topic"));
+    if (settings.hideAI && isAI(v)) reasons.push(tx("aiPercent", "AI $1", [pct(v.ai)]));
     const cat = !reasons.length ? ui : settings.hide[ui] ? ui : (settings.hideOffTopic && isOffTopic(v)) ? "offtopic" : "ai";
     return { hide: reasons.length > 0, reason: reasons.join(" · "), cat };
   }
@@ -235,11 +236,11 @@
     const off = isOffTopic(v);
     const tone = decision?.hide ? "muted" : off ? "offtopic" : ui;
     const tag = el("span", `sift-tag sift-t-${tone}`);
-    const word = off && !decision?.hide ? "Off-topic" : (XQF_TAG[v.category] || CAT[ui][1]);
-    tag.appendChild(el("span", "sift-tag-word", decision?.hide ? `Hidden · ${decision.reason}` : word));
-    if (v.ai >= AI_SHOW && !decision?.hide) tag.appendChild(el("span", `sift-tag-ai ${v.ai >= AI_AT ? "high" : ""}`, `AI ${pct(v.ai)}`));
+    const word = off && !decision?.hide ? tx("offTopic", "Off-topic") : (XQF_TAG[v.category] || CAT[ui][1]);
+    tag.appendChild(el("span", "sift-tag-word", decision?.hide ? tx("hiddenReason", "Hidden · $1", [decision.reason]) : word));
+    if (v.ai >= AI_SHOW && !decision?.hide) tag.appendChild(el("span", `sift-tag-ai ${v.ai >= AI_AT ? "high" : ""}`, tx("aiPercent", "AI $1", [pct(v.ai)])));
     const top = Object.entries(v.probs || {}).sort((a, b2) => b2[1] - a[1]).slice(0, 3).map(([k, p]) => `${fineLabel(k)} ${pct(p)}`).join(" · ");
-    tag.title = `${top}\nTech ${pct(v.tech ?? 1)} · AI-written ${pct(v.ai)}`;
+    tag.title = tx("badgeTitle", "$1\nTech $2 · AI-written $3", [top, pct(v.tech ?? 1), pct(v.ai)]);
     tag.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); });
     header.appendChild(tag);
     // substantive + clearly tech: a hairline accent so the eye finds it while scrolling
@@ -262,18 +263,19 @@
     const bar = el("div", "sift-bar");
     // never let clicks on our bar reach X's "open this post" handler
     bar.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); });
-    const who = t.handle ? `@${t.handle}` : "post";
+    const who = t.handle ? `@${t.handle}` : tx("post", "post");
     const text = el("span", "sift-bar-text");
     text.appendChild(el("span", "sift-bar-who", who));
+    text.querySelector(".sift-bar-who").dataset.siftShown = tx("shown", "Shown");
     text.appendChild(el("span", "sift-bar-why", decision.reason));
     bar.appendChild(text);
     const actions = el("span", "sift-actions");
-    const show = el("button", "sift-show", "Show");
+    const show = el("button", "sift-show", tx("show", "Show"));
     // set(open) is the single way to reveal / re-collapse this cell; group bars call it for every member
     c.__siftSet = (open) => {
       c.classList.toggle("sift-hidden", !open);
       bar.classList.toggle("sift-open", open);
-      show.textContent = open ? "Hide" : "Show";
+      show.textContent = open ? tx("hide", "Hide") : tx("show", "Show");
       article.setAttribute(ATTR, open ? "revealed" : "hidden");
       if (open) badge(article, v, decision);
     };
@@ -281,11 +283,11 @@
     actions.appendChild(show);
     if (t.handle) {
       const more = el("button", "sift-more", "⋯");
-      more.title = "More";
+      more.title = tx("more", "More");
       const menu = el("span", "sift-menu");
-      const alw = el("button", "sift-menu-item", `Always show @${t.handle}`);
+      const alw = el("button", "sift-menu-item", tx("contentAlwaysShow", "Always show @$1", [t.handle]));
       alw.addEventListener("click", (e) => { e.stopPropagation(); send({ type: "allow", handle: t.handle }); });
-      const blk = el("button", "sift-menu-item", `Always hide @${t.handle}`);
+      const blk = el("button", "sift-menu-item", tx("contentAlwaysHide", "Always hide @$1", [t.handle]));
       blk.addEventListener("click", (e) => { e.stopPropagation(); send({ type: "block", handle: t.handle }); });
       menu.append(alw, blk);
       more.addEventListener("click", (e) => { e.stopPropagation(); menu.classList.toggle("open"); });
@@ -318,10 +320,10 @@
         const g = el("div", "sift-bar sift-group");
         g.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); });
         const text = el("span", "sift-bar-text");
-        text.appendChild(el("span", "sift-bar-who", `${run.length} posts hidden`));
+        text.appendChild(el("span", "sift-bar-who", tx("postsHidden", "$1 posts hidden", [run.length])));
         text.appendChild(el("span", "sift-bar-why", why));
         g.appendChild(text);
-        const show = el("button", "sift-show", "Show");
+        const show = el("button", "sift-show", tx("show", "Show"));
         const members = run;
         show.addEventListener("click", (e) => {
           e.stopPropagation(); e.preventDefault();
@@ -376,7 +378,7 @@
       .then((r) => {
         if (r === null) { items.forEach((i) => i.resolve(null)); return; }
         if (r?.error === "no_api_key") {
-          toast("Sift needs a TypeSafe API key to start filtering.", "Set up (1 min)", () => send({ type: "openOptions" }));
+          toast(tx("contentSetupKey", "Sift needs a TypeSafe API key to start filtering."), tx("contentSetupOneMinute", "Set up (1 min)"), () => send({ type: "openOptions" }));
           items.forEach((i) => i.resolve(null));
           return;
         }
@@ -388,7 +390,7 @@
           if (res?.error && /HTTP 40[13]/.test(res.error)) authErr = res.error;
           i.resolve(res?.verdict || null);
         }
-        if (authErr) toast("Sift: TypeSafe rejected the API key.", "Fix key", () => send({ type: "openOptions" }));
+        if (authErr) toast(tx("contentKeyRejected", "Sift: TypeSafe rejected the API key."), tx("contentFixKey", "Fix key"), () => send({ type: "openOptions" }));
       })
       .catch((e) => { items.forEach((i) => i.resolve(null)); console.warn("[Sift] score failed", e); });
   }
