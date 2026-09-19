@@ -12,17 +12,22 @@
   const pageCounts = {}; // category -> hidden count on this page
 
   let settings = null;
+  let evaluatorId = "";
   let stopRegexes = [];
   let allow = new Set();
   let block = new Set();
-  const verdicts = new Map(); // id -> verdict (survives X's list virtualisation)
-  const pending = new Map(); // id -> Promise
+  const verdicts = new Map(); // post id + normalized state fingerprint -> verdict
+  const pending = new Map(); // post id + state fingerprint + dimensions -> Promise
   let batch = [];
   let batchTimer = null;
   let pageHidden = 0;
 
   // ---------- settings ----------
   function compileSettings(s) {
+    s = { ...s, model: XQF_resolveModel(s.model) };
+    const nextEvaluator = XQF_evaluatorIdentity(s.model);
+    if (evaluatorId && evaluatorId !== nextEvaluator) verdicts.clear();
+    evaluatorId = nextEvaluator;
     settings = s;
     stopRegexes = [];
     for (const line of (s.stopPhrases || "").split("\n")) {
@@ -155,24 +160,26 @@
   }
 
   function toState(t) {
-    const s = {
-      author: t.handle, display_name: t.displayName, text: t.text,
-      has_media: t.hasMedia, has_link: t.hasLink, is_reply: t.isReply,
-      likes: t.metrics.likes, reposts: t.metrics.reposts, replies: t.metrics.replies
-    };
+    const s = { text: t.text };
     if (t.media) s.media = t.media;
-    if (t.alts.length) s.image_descriptions = t.alts.join(" | ").slice(0, 400);
-    if (t.quoted) s.quoted_post = { author: t.quotedAuthor, text: t.quoted.slice(0, 600) };
+    if (t.hasMedia) s.has_media = true;
+    if (t.hasLink) s.has_link = true;
+    if (t.alts.length) s.image_descriptions = t.alts.join(" | ");
+    if (t.quoted) s.quoted_post = { author: t.quotedAuthor, text: t.quoted };
     if (t.card) s[t.isArticle ? "article" : "link_card"] = t.card;
+    if (t.isReply) s.is_reply = true;
     if (!t.isFocal) {
       const p = focalPost();
       // in-thread replies on a /status/ page carry no "Replying to" line; anything below the focal post is a reply to it
       if (p && p.id !== t.id && (t.isReply || (t.el && p.el && p.el.compareDocumentPosition(t.el) & Node.DOCUMENT_POSITION_FOLLOWING))) {
-        s.is_reply = true;
         s.in_reply_to = { author: p.author, text: p.text };
       }
     }
-    return s;
+    return XQF_normalizeStateForJev(s);
+  }
+
+  function stateIdentity(t, state) {
+    return XQF_postStateIdentity(t.id, state || toState(t));
   }
 
   // On a /status/ page the focal post is the conversation root; replies are judged in its context.
@@ -193,8 +200,14 @@
     if (t.isAd) return "ad";
     return v?.category || null;
   }
-  function isAI(v) { return !!v && v.ai >= AI_AT; }
+  function isAI(v) { return !!v && typeof v.ai === "number" && v.ai >= AI_AT; }
   function isOffTopic(v) { return !!v && typeof v.tech === "number" && v.tech < techAt(); }
+
+  function localVerdict(t, state) {
+    return XQF_localVerdictForJev(state || toState(t));
+  }
+
+  function notePipeline(kind) { send({ type: "pipeline", kind }); }
 
   // reason: short plain words for the collapsed bar. cat: bucket for counts / colour.
   function decide(t, v) {
@@ -228,7 +241,7 @@
 
   // One quiet tag next to the author. Colour carries the verdict; the AI % only appears when it matters.
   function badge(article, v, decision) {
-    if (!settings.showBadges || !v) return;
+    if (!settings.showBadges || !v || !v.category) return;
     article.querySelectorAll(".sift-tag").forEach((x) => x.remove());
     const header = article.querySelector(`[data-testid="User-Name"]`);
     if (!header) return;
@@ -374,7 +387,7 @@
     batchTimer = null;
     const items = batch; batch = [];
     if (!items.length) return;
-    send({ type: "score", items: items.map((i) => ({ id: i.t.id, state: toState(i.t) })) })
+    send({ type: "score", items: items.map((i) => ({ id: i.t.id, state: i.state, dimensions: i.dimensions })) })
       .then((r) => {
         if (r === null) { items.forEach((i) => i.resolve(null)); return; }
         if (r?.error === "no_api_key") {
@@ -382,27 +395,38 @@
           items.forEach((i) => i.resolve(null));
           return;
         }
-        const byId = new Map((r?.results || []).map((x) => [x.id, x]));
         let authErr = null;
-        for (const i of items) {
-          const res = byId.get(i.t.id);
-          if (res?.verdict) verdicts.set(i.t.id, res.verdict);
+        const results = Array.isArray(r?.results) ? r.results : [];
+        items.forEach((i, index) => {
+          // Background preserves Promise.all order and echoes stateKey. Both
+          // checks prevent a stale reply or duplicate post id from populating
+          // the verdict for a different SPA context.
+          const res = results[index];
+          const sameIdentity = res && String(res.id) === String(i.t.id) && res.stateKey === i.stateKey;
+          if (sameIdentity && res.verdict && res.verdict.evaluator === evaluatorId) {
+            verdicts.set(i.identityKey, XQF_mergeVerdicts(verdicts.get(i.identityKey), res.verdict));
+          }
           if (res?.error && /HTTP 40[13]/.test(res.error)) authErr = res.error;
-          i.resolve(res?.verdict || null);
-        }
+          i.resolve(sameIdentity ? (verdicts.get(i.identityKey) || (res.verdict?.evaluator === evaluatorId ? res.verdict : null)) : null);
+        });
         if (authErr) toast(tx("contentKeyRejected", "Sift: TypeSafe rejected the API key."), tx("contentFixKey", "Fix key"), () => send({ type: "openOptions" }));
       })
       .catch((e) => { items.forEach((i) => i.resolve(null)); console.warn("[Sift] score failed", e); });
   }
 
-  function requestScore(t) {
-    if (verdicts.has(t.id)) return Promise.resolve(verdicts.get(t.id));
-    if (pending.has(t.id)) return pending.get(t.id);
+  function requestScore(t, dimensions, state) {
+    const dims = [...new Set(dimensions || XQF_dimensionsForSettings(settings, { isReply: t.isReply }))].sort();
+    const identity = XQF_scoreRequestIdentity(t.id, state || toState(t), dims);
+    const current = verdicts.get(identity.key);
+    if (!dims.length) return Promise.resolve(current || null);
+    if (XQF_hasDimensions(current, dims)) return Promise.resolve(current);
+    const pendingKey = identity.requestKey;
+    if (pending.has(pendingKey)) return pending.get(pendingKey);
     const p = new Promise((resolve) => {
-      batch.push({ t, resolve });
+      batch.push({ t, state: identity.state, stateKey: identity.stateKey, identityKey: identity.key, dimensions: dims, resolve });
       if (!batchTimer) batchTimer = setTimeout(flushBatch, 120);
-    }).finally(() => pending.delete(t.id));
-    pending.set(t.id, p);
+    }).finally(() => pending.delete(pendingKey));
+    pending.set(pendingKey, p);
     return p;
   }
 
@@ -413,24 +437,46 @@
     if (!t) return;
     article.setAttribute(ATTR, "pending");
     article.setAttribute("data-sift-id", t.id);
+    const identity = stateIdentity(t);
 
     const onStatusPage = /\/status\/\d+/.test(location.pathname);
     if (onStatusPage && !t.isFocal && !settings.filterReplies) {
-      const v0 = verdicts.get(t.id);
-      if (v0) badge(article, v0, null);
-      else requestScore(t).then((v) => v && article.isConnected && badge(article, v, null));
+      if (!settings.showBadges) {
+        notePipeline("skipped");
+        article.setAttribute(ATTR, "kept");
+        return;
+      }
+      const dims = XQF_dimensionsForSettings(settings, { isReply: true });
+      const v0 = verdicts.get(identity.key);
+      if (XQF_hasDimensions(v0, dims)) badge(article, v0, null);
+      else requestScore(t, dims, identity.state).then((v) => v && article.isConnected && badge(article, v, null));
       article.setAttribute(ATTR, "kept");
       return;
     }
 
     const local = decide(t, null);
-    if (local) { finish(article, t, verdicts.get(t.id) || null); return; }
+    if (local) { notePipeline("local"); finish(article, t, verdicts.get(identity.key) || null); return; }
 
     // nothing at all to judge (no text, no quote, no card, no media): keep silently
-    if (!t.text && !t.quoted && !t.card && !t.media) { article.setAttribute(ATTR, "kept"); return; }
+    if (!t.text && !t.quoted && !t.card && !t.media) { notePipeline("skipped"); article.setAttribute(ATTR, "kept"); return; }
 
-    if (!verdicts.has(t.id) && settings.mode === "hide") cell(article).classList.add("sift-pending");
-    const v = await requestScore(t);
+    const dims = XQF_dimensionsForSettings(settings, { isReply: t.isReply });
+    if (!dims.length) {
+      notePipeline("skipped");
+      article.setAttribute(ATTR, "kept");
+      return;
+    }
+
+    const localVerdictForPost = localVerdict(t, identity.state);
+    if (localVerdictForPost) {
+      verdicts.set(identity.key, XQF_mergeVerdicts(verdicts.get(identity.key), localVerdictForPost));
+      notePipeline("local");
+      finish(article, t, verdicts.get(identity.key));
+      return;
+    }
+
+    if (!XQF_hasDimensions(verdicts.get(identity.key), dims) && settings.mode === "hide") cell(article).classList.add("sift-pending");
+    const v = await requestScore(t, dims, identity.state);
     if (!article.isConnected) return;
     finish(article, t, v);
   }

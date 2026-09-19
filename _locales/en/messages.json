@@ -85,7 +85,7 @@
 
   "optionsHeaderDescription": { "message": "Keep your X feed to substantive tech. Every post gets a label; you choose which to hide." },
   "optionsConnection": { "message": "Connection" },
-  "optionsConnectionDescription": { "message": "Labels come from TypeSafe Jev. About 0.00003 USD per post." },
+  "optionsConnectionDescription": { "message": "Labels come from TypeSafe Jev. Cost is calculated from Jev's reported input tokens." },
   "optionsApiKey": { "message": "API key" },
   "optionsGetOne": { "message": "get one" },
   "optionsApiKeyPlaceholder": { "message": "tsk_…" },

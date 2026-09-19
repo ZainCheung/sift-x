@@ -33,7 +33,7 @@ function renderCats() {
 }
 
 function fill(s) {
-  for (const f of SIMPLE) { const el = $(f); if (el.type === "checkbox") el.checked = !!s[f]; else el.value = s[f] ?? ""; }
+  for (const f of SIMPLE) { const el = $(f); if (el.type === "checkbox") el.checked = !!s[f]; else el.value = f === "model" ? XQF_resolveModel(s[f]) : (s[f] ?? ""); }
   hide = { ...XQF_DEFAULTS.hide, ...(s.hide || {}) }; hideAI = s.hideAI !== false; hideOffTopic = s.hideOffTopic !== false;
   renderCats();
   if (s.apiKey) setKeyStatus(XQF_t("statusConnected", undefined, "Connected"), true);
@@ -42,7 +42,7 @@ function fill(s) {
 function collect() {
   const out = { hide, hideAI, hideOffTopic };
   for (const f of SIMPLE) { const el = $(f); out[f] = el.type === "checkbox" ? el.checked : el.value.trim(); }
-  if (!out.model) out.model = "jev-latest";
+  out.model = XQF_resolveModel(out.model);
   return out;
 }
 
@@ -62,7 +62,7 @@ $("connect").addEventListener("click", async () => {
   const key = $("apiKey").value.trim();
   if (!key) return setKeyStatus(XQF_t("statusPasteKeyFirst", undefined, "Paste your key first."), false);
   setKeyStatus(XQF_t("statusChecking", undefined, "Checking…"), true);
-  const r = await chrome.runtime.sendMessage({ type: "test", apiKey: key, model: $("model").value.trim() || "jev-latest" });
+  const r = await chrome.runtime.sendMessage({ type: "test", apiKey: key, model: XQF_resolveModel($("model").value) });
   if (r.ok) {
     await chrome.storage.sync.set({ apiKey: key });
     setKeyStatus(XQF_t("statusConnectedTo", [r.model], "Connected to $1. Open x.com — Sift is on."), true);
