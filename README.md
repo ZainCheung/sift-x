@@ -33,9 +33,9 @@ The interface follows the browser language. English is the default; Simplified C
 
 ## Measuring the scoring pipeline
 
-Run `npm test` to exercise the fixed Jev fixture corpus and cache/state regression checks. Runtime counters are available from the extension's `stats` message (and are persisted locally): `requests`, `inputTokens`, `tokensPerAnalyzedPost`, `cacheHits`, `semanticCacheHits`, `inflightDedupe`, `localResolved`, `skipped`, and `cost`. Token and cost figures use Jev's actual `usage.input_tokens`, not character-count estimates.
+Run `npm test` to exercise the fixed Jev fixture corpus and cache/state regression checks. Runtime counters are available from the extension's `stats` message (and are persisted locally): `requests`, `analyzedPosts`, `inputTokens`, `tokensPerAnalyzedPost`, `tokensPerJevRequest`, `cacheHits`, `semanticCacheHits`, `inflightDedupe`, `localResolved`, `skipped`, and `cost`. Token and cost figures use Jev's actual `usage.input_tokens`, not character-count estimates.
 
-For an opt-in live sample (this makes paid requests), run `SIFT_JEV_API_KEY=… npm run measure:jev` before and after a prompt/state change and compare the JSON totals. The harness uses the same fixture file and records Jev's `usage.input_tokens` for every request.
+The default evaluator is pinned to `jev-1.13.0`; update it explicitly when validating a new Jev release. For an opt-in live sample (this makes paid requests), run `SIFT_JEV_API_KEY=… npm run measure:jev` before and after a prompt/state change and compare the JSON totals. The harness uses the same fixture file, records Jev's `usage.input_tokens` and raw answers, and reports category accuracy, tech-threshold accuracy, AI-written-threshold accuracy, and mismatch cases.
 
 ## License
 

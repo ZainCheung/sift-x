@@ -6,7 +6,7 @@ const API_URL = "https://api.typesafe.ai/v1/systemone";
 const CACHE_KEY = "xqf_cache";
 const SEMANTIC_CACHE_KEY = "xqf_semantic_cache";
 const STATS_KEY = "xqf_stats";
-const CACHE_SCHEMA = 8;
+const CACHE_SCHEMA = 9;
 const CACHE_MAX = 4000;
 const SEMANTIC_CACHE_MAX = 2000;
 const CONCURRENCY = 6;
@@ -18,6 +18,7 @@ const STATS_DEFAULTS = {
   cost: 0,
   errors: 0,
   requests: 0,
+  analyzedPosts: 0,
   cacheHits: 0,
   semanticCacheHits: 0,
   inflightDedupe: 0,
@@ -30,13 +31,29 @@ let cache = null; // Map post id -> { schema, dimensions: { category, tech, ai_w
 let semanticCache = null; // normalized semantic fingerprint -> same entry shape
 let stats = null;
 let saveTimer = null;
+let analyzedPostKeys = new Set();
 
 function freshStats() { return { ...STATS_DEFAULTS }; }
+function migrateStats(raw) {
+  const previous = raw && typeof raw === "object" ? raw : {};
+  const next = { ...freshStats(), ...previous };
+  // Version 0.8 persisted `analyzed` and `tokens` but had no request counter.
+  // Treat those historical Jev completions as requests/posts instead of
+  // reporting a misleading zero denominator after the upgrade.
+  if (previous.requests == null) next.requests = Number(previous.analyzed) || 0;
+  if (previous.analyzedPosts == null) next.analyzedPosts = Number(previous.analyzed) || 0;
+  return next;
+}
 
 async function loadState() {
   if (settings && cache && semanticCache && stats) return;
   const s = await chrome.storage.sync.get(XQF_DEFAULTS);
   settings = { ...XQF_DEFAULTS, ...s, hide: { ...XQF_DEFAULTS.hide, ...(s.hide || {}) } };
+  const resolvedModel = XQF_resolveModel(settings.model);
+  if (settings.model !== resolvedModel) {
+    settings.model = resolvedModel;
+    try { await chrome.storage.sync.set({ model: resolvedModel }); } catch { /* keep the in-memory pin */ }
+  }
 
   const l0 = await chrome.storage.local.get(["xqf_schema"]);
   if (l0.xqf_schema !== CACHE_SCHEMA) {
@@ -53,7 +70,10 @@ async function loadState() {
   const l = await chrome.storage.local.get([CACHE_KEY, SEMANTIC_CACHE_KEY, STATS_KEY]);
   cache = new Map(Object.entries(l[CACHE_KEY] || {}));
   semanticCache = new Map(Object.entries(l[SEMANTIC_CACHE_KEY] || {}));
-  stats = { ...freshStats(), ...(l[STATS_KEY] || {}) };
+  const previousStats = l[STATS_KEY] || {};
+  stats = migrateStats(previousStats);
+  analyzedPostKeys = new Set();
+  if (previousStats.requests == null || previousStats.analyzedPosts == null) scheduleSave();
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -88,13 +108,14 @@ function fingerprint(value) {
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
-function modelName(model) { return String(model || "jev-latest"); }
+function modelName(model) { return XQF_resolveModel(model); }
 function evaluatorVersion(dimension, model) {
   return `${modelName(model)}|${XQF_DIMENSION_VERSIONS[dimension] || XQF_PROMPT_VERSION}|${XQF_STATE_SCHEMA_VERSION}`;
 }
 function semanticKey(model, state) {
   return `${modelName(model)}|${XQF_PROMPT_VERSION}|${XQF_STATE_SCHEMA_VERSION}|${fingerprint(state)}`;
 }
+function stateFingerprint(state) { return fingerprint(XQF_normalizeStateForJev(state)); }
 function validDimensions(dimensions) {
   return [...new Set((dimensions || []).filter((d) => DIMENSIONS.includes(d)))];
 }
@@ -108,35 +129,35 @@ function dimensionPatch(verdict, dimension) {
   return null;
 }
 
-function mergeEntry(entry, verdict, dimensions, model) {
+function mergeEntry(entry, verdict, dimensions, model, stateKey) {
   const out = entry && entry.schema === CACHE_SCHEMA
     ? { schema: CACHE_SCHEMA, dimensions: { ...(entry.dimensions || {}) }, t: entry.t || 0 }
     : { schema: CACHE_SCHEMA, dimensions: {}, t: 0 };
   for (const dimension of validDimensions(dimensions)) {
     const value = dimensionPatch(verdict, dimension);
-    if (value) out.dimensions[dimension] = { version: evaluatorVersion(dimension, model), value };
+    if (value) out.dimensions[dimension] = { version: evaluatorVersion(dimension, model), state: stateKey, value };
   }
   out.t = Date.now();
   return out;
 }
 
-function verdictFromEntry(entry, dimensions, model) {
+function verdictFromEntry(entry, dimensions, model, stateKey) {
   if (!entry || entry.schema !== CACHE_SCHEMA) return null;
   let out = { model: modelName(model), evaluator: XQF_evaluatorIdentity(model), t: entry.t || Date.now() };
   let found = false;
   for (const dimension of validDimensions(dimensions)) {
     const record = entry.dimensions?.[dimension];
-    if (!record || record.version !== evaluatorVersion(dimension, model)) continue;
+    if (!record || record.version !== evaluatorVersion(dimension, model) || record.state !== stateKey) continue;
     found = true;
     out = XQF_mergeVerdicts(out, record.value);
   }
   return found ? out : null;
 }
 
-function missingDimensions(entry, dimensions, model) {
+function missingDimensions(entry, dimensions, model, stateKey) {
   return validDimensions(dimensions).filter((dimension) => {
     const record = entry?.dimensions?.[dimension];
-    return !record || record.version !== evaluatorVersion(dimension, model);
+    return !record || record.version !== evaluatorVersion(dimension, model) || record.state !== stateKey;
   });
 }
 
@@ -223,7 +244,7 @@ function requestEvaluation(key, state, dimensions) {
     return previous;
   }
   const promise = new Promise((resolve) => {
-    queue.push({ key, state, dimensions, model: settings.model, resolve });
+    queue.push({ key, state, dimensions, model: modelName(settings.model), resolve });
     pump();
   });
   inflight.set(key, promise);
@@ -251,10 +272,11 @@ async function score(id, state, dimensions) {
 
   const model = modelName(settings.model);
   const normalized = XQF_normalizeStateForJev(state);
+  const stateKey = stateFingerprint(normalized);
   const key = semanticKey(model, normalized);
   let entry = cache.get(postId);
-  let missing = missingDimensions(entry, dims, model);
-  let verdict = verdictFromEntry(entry, dims, model);
+  let missing = missingDimensions(entry, dims, model, stateKey);
+  let verdict = verdictFromEntry(entry, dims, model, stateKey);
   if (!missing.length) {
     touch(cache, postId, entry);
     stats.cacheHits++;
@@ -266,12 +288,12 @@ async function score(id, state, dimensions) {
   // Jev. The post-id cache above remains the fastest path.
   const semanticEntry = semanticCache.get(key);
   if (semanticEntry) {
-    const semanticVerdict = verdictFromEntry(semanticEntry, dims, model);
+    const semanticVerdict = verdictFromEntry(semanticEntry, dims, model, stateKey);
     if (semanticVerdict) {
-      entry = mergeEntry(entry, semanticVerdict, dims, model);
+      entry = mergeEntry(entry, semanticVerdict, dims, model, stateKey);
       cache.set(postId, entry);
-      missing = missingDimensions(entry, dims, model);
-      verdict = verdictFromEntry(entry, dims, model);
+      missing = missingDimensions(entry, dims, model, stateKey);
+      verdict = verdictFromEntry(entry, dims, model, stateKey);
       stats.semanticCacheHits++;
       touch(semanticCache, key, semanticEntry);
       scheduleSave();
@@ -283,15 +305,20 @@ async function score(id, state, dimensions) {
   const result = await requestEvaluation(evaluationKey, normalized, missing);
   if (result.error) return { id, error: result.error };
   const patch = toVerdict(result.resp, missing);
+  const analyzedKey = `${postId}|${model}|${stateKey}`;
+  if (!analyzedPostKeys.has(analyzedKey)) {
+    analyzedPostKeys.add(analyzedKey);
+    stats.analyzedPosts++;
+  }
   // Another dimension request for the same post may have completed while this
   // request was in flight; merge against the latest entry to avoid clobbering
   // an unrelated valid dimension.
-  entry = mergeEntry(cache.get(postId), patch, missing, model);
+  entry = mergeEntry(cache.get(postId), patch, missing, model, stateKey);
   cache.set(postId, entry);
   const currentSemantic = semanticCache.get(key);
-  semanticCache.set(key, mergeEntry(currentSemantic, patch, missing, model));
+  semanticCache.set(key, mergeEntry(currentSemantic, patch, missing, model, stateKey));
   scheduleSave();
-  verdict = verdictFromEntry(entry, dims, model);
+  verdict = verdictFromEntry(entry, dims, model, stateKey);
   return { id, verdict, cached: false };
 }
 
@@ -299,7 +326,9 @@ function statsSnapshot() {
   return {
     ...stats,
     inputTokens: stats.tokens,
-    tokensPerAnalyzedPost: stats.analyzed ? stats.tokens / stats.analyzed : 0,
+    tokensPerAnalyzedPost: stats.analyzedPosts ? stats.tokens / stats.analyzedPosts : 0,
+    tokensPerJevRequest: stats.requests ? stats.tokens / stats.requests : 0,
+    // Keep the old field as an alias for consumers that already read it.
     tokensPerRequest: stats.requests ? stats.tokens / stats.requests : 0
   };
 }
@@ -377,6 +406,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       case "resetStats":
         stats = freshStats();
+        analyzedPostKeys.clear();
         scheduleSave();
         sendResponse({ ok: true });
         break;
@@ -408,5 +438,5 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 if (typeof globalThis !== "undefined") {
-  Object.assign(globalThis, { askJev, toVerdict, score, fingerprint, evaluatorVersion, semanticKey, statsSnapshot });
+  Object.assign(globalThis, { askJev, toVerdict, score, fingerprint, stateFingerprint, evaluatorVersion, semanticKey, migrateStats, statsSnapshot });
 }

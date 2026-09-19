@@ -24,6 +24,7 @@
 
   // ---------- settings ----------
   function compileSettings(s) {
+    s = { ...s, model: XQF_resolveModel(s.model) };
     const nextEvaluator = XQF_evaluatorIdentity(s.model);
     if (evaluatorId && evaluatorId !== nextEvaluator) verdicts.clear();
     evaluatorId = nextEvaluator;

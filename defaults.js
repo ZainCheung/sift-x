@@ -3,6 +3,15 @@
 const XQF_TEXT = (key, fallback, substitutions) =>
   typeof XQF_t === "function" ? XQF_t(key, substitutions, fallback) : fallback;
 
+// Pin the calibrated Jev model. `jev-latest` is an alias that can move when a
+// new release ships, which would otherwise invalidate confidence thresholds
+// and make persistent verdicts silently change meaning.
+const XQF_DEFAULT_MODEL = "jev-1.13.0";
+function XQF_resolveModel(model) {
+  const configured = String(model || XQF_DEFAULT_MODEL).trim();
+  return configured === "jev-latest" ? XQF_DEFAULT_MODEL : configured;
+}
+
 // What the user sees: five labels. Jev answers with finer categories (below) which map onto these.
 const XQF_CATEGORIES = {
   substance: { icon: "💡", label: XQF_TEXT("categorySubstanceLabel", "Substance"), hide: false, desc: XQF_TEXT("categorySubstanceDescription", "Insight, news, real discussion — something to learn or think about") },
@@ -39,7 +48,7 @@ const XQF_DEFAULTS = {
   enabled: true,
   pausedUntil: 0,
   apiKey: "",
-  model: "jev-latest",
+  model: XQF_DEFAULT_MODEL,
   // which categories to hide: {insight:false, ..., bait:true}
   hide: Object.fromEntries(Object.entries(XQF_CATEGORIES).map(([k, c]) => [k, c.hide])),
   hideAI: true,
@@ -83,7 +92,7 @@ const XQF_DEFAULTS = {
 // Jev evaluator identity.  Cache entries are versioned per dimension so a
 // prompt/state change never silently reuses a result from an older evaluator.
 const XQF_PROMPT_VERSION = "2026-09-19-compact-v1";
-const XQF_STATE_SCHEMA_VERSION = 2;
+const XQF_STATE_SCHEMA_VERSION = 3;
 const XQF_DIMENSION_VERSIONS = Object.freeze({
   category: "2026-09-19-category-v1",
   tech: "2026-09-19-tech-v1",
@@ -102,7 +111,12 @@ const XQF_STATE_LIMITS = Object.freeze({
 // often contains the conclusion/link) when a long premium post exceeds the
 // input budget.  This is deliberately shared by content.js and background.js.
 function XQF_truncate(text, limit) {
-  const value = String(text ?? "").replace(/\s+/g, " ").trim();
+  const value = String(text ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .trim();
   if (!value || value.length <= limit) return value;
   const head = Math.max(1, Math.ceil(limit * 0.64));
   const tail = Math.max(1, limit - head - 1);
@@ -110,7 +124,7 @@ function XQF_truncate(text, limit) {
 }
 
 function XQF_evaluatorIdentity(model) {
-  return `${String(model || "jev-latest")}|${XQF_PROMPT_VERSION}|${XQF_STATE_SCHEMA_VERSION}`;
+  return `${XQF_resolveModel(model)}|${XQF_PROMPT_VERSION}|${XQF_STATE_SCHEMA_VERSION}`;
 }
 
 function XQF_copyContext(value, limit, keepAuthor = false) {
@@ -236,7 +250,7 @@ const XQF_QUESTIONS = {
 
 if (typeof globalThis !== "undefined") {
   Object.assign(globalThis, {
-    XQF_DEFAULTS, XQF_CATEGORIES, XQF_FINE_TO_UI, XQF_FINE_LABEL, XQF_TAG, XQF_PRESETS,
+    XQF_DEFAULT_MODEL, XQF_resolveModel, XQF_DEFAULTS, XQF_CATEGORIES, XQF_FINE_TO_UI, XQF_FINE_LABEL, XQF_TAG, XQF_PRESETS,
     XQF_AI, XQF_TOPIC, XQF_QUESTIONS, XQF_PROMPT_VERSION, XQF_DIMENSION_VERSIONS, XQF_STATE_SCHEMA_VERSION,
     XQF_STATE_LIMITS, XQF_truncate, XQF_evaluatorIdentity, XQF_normalizeStateForJev, XQF_localVerdictForJev, XQF_dimensionsForSettings,
     XQF_questionsForDimensions, XQF_hasDimensions, XQF_mergeVerdicts

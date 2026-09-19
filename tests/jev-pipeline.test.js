@@ -3,6 +3,7 @@ const { test } = require("node:test");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { summarizeRows } = require("../scripts/measure-jev.js");
 
 function loadDefaults() {
   const context = { console };
@@ -80,6 +81,8 @@ test("state normalization is sparse and preserves both ends of long text", () =>
   assert.match(state.text, /^start/);
   assert.match(state.text, /END-MARKER$/);
   assert.equal(JSON.stringify(state.quoted_post), JSON.stringify({ text: "quoted context", author: "quoted" }));
+  const structured = defaults.XQF_normalizeStateForJev({ text: "Hook\n- first cue\n- second cue\n\nConclusion" });
+  assert.match(structured.text, /\n- first cue\n- second cue\n/);
 });
 
 test("dimensions follow filtering and badge settings", () => {
@@ -87,6 +90,13 @@ test("dimensions follow filtering and badge settings", () => {
   assert.equal(JSON.stringify(defaults.XQF_dimensionsForSettings({ hide: { substance: false, humor: false, chitchat: false, promo: false, junk: false }, hideOffTopic: true, hideAI: false, showBadges: false })), JSON.stringify(["tech"]));
   assert.equal(JSON.stringify(defaults.XQF_dimensionsForSettings({ hide: { substance: false, humor: false, chitchat: false, promo: false, junk: true }, hideOffTopic: false, hideAI: true, showBadges: false })), JSON.stringify(["category", "ai_written"]));
   assert.equal(JSON.stringify(defaults.XQF_dimensionsForSettings({ hide: {}, hideOffTopic: true, hideAI: true, showBadges: false }, { isReply: true, filterReplies: false })), JSON.stringify(["category", "tech", "ai_written"]));
+});
+
+test("the configured model is pinned and aliases resolve to the pinned version", () => {
+  assert.equal(defaults.XQF_DEFAULT_MODEL, "jev-1.13.0");
+  assert.equal(defaults.XQF_DEFAULTS.model, "jev-1.13.0");
+  assert.equal(defaults.XQF_resolveModel("jev-latest"), "jev-1.13.0");
+  assert.equal(defaults.XQF_resolveModel("jev-1.12.0"), "jev-1.12.0");
 });
 
 test("fixture corpus covers the requested regression classes", () => {
@@ -100,6 +110,27 @@ test("fixture corpus covers the requested regression classes", () => {
   assert.match(bounded, /migration\.$/);
   assert.equal(defaults.XQF_localVerdictForJev(fixtures.find((fixture) => fixture.id === "filler")).category, "filler");
   assert.equal(defaults.XQF_localVerdictForJev({ text: "nice", in_reply_to: { text: "A technical post" } }), null);
+});
+
+test("classification harness reports dimension accuracy and mismatches", () => {
+  const rows = fixtures.map((fixture) => ({
+    id: fixture.id,
+    expected: fixture.expected,
+    input_tokens: 10,
+    answers: {
+      category: { choice: fixture.expected.category },
+      tech: { noul: fixture.expected.tech ? 0.8 : 0.2 },
+      ...(typeof fixture.expected.ai === "boolean" ? { ai_written: { noul: fixture.expected.ai ? 0.9 : 0.1 } } : {})
+    }
+  }));
+  const summary = summarizeRows(rows);
+  assert.equal(summary.categoryAccuracy.accuracy, 1);
+  assert.equal(summary.techAccuracy.accuracy, 1);
+  assert.equal(summary.aiWrittenAccuracy.accuracy, 1);
+  assert.deepEqual(summary.mismatchCases, []);
+  assert.equal(summary.totalInputTokens, fixtures.length * 10);
+  const mismatch = summarizeRows([{ id: "bad", expected: { category: "insight", tech: true, ai: true }, input_tokens: 3, answers: { category: { choice: "humor" }, tech: { noul: 0.2 }, ai_written: { noul: 0.1 } } }]);
+  assert.deepEqual(mismatch.mismatchCases[0].mismatches.map((item) => item.dimension), ["category", "tech", "ai_written"]);
 });
 
 test("background deduplicates concurrent evaluations and reuses dimensions", async () => {
@@ -138,4 +169,42 @@ test("background deduplicates concurrent evaluations and reuses dimensions", asy
   assert.equal(merged.cached, true);
   assert.equal(merged.verdict.category, "insight");
   assert.equal(merged.verdict.tech, 0.9);
+});
+
+test("post-id cache entries are bound to normalized reply context", async () => {
+  const env = makeBackgroundContext();
+  let calls = 0;
+  env.context.fetch = async (_url, options) => {
+    calls++;
+    const body = JSON.parse(options.body);
+    const tech = body.state.in_reply_to ? 0.9 : 0.1;
+    return { ok: true, json: async () => ({ model: "jev-1.13.0", usage: { input_tokens: 10 }, answers: { tech: { noul: tech } } }) };
+  };
+  await env.context.loadState();
+  const inThread = await env.context.score("reply-1", { text: "Nice", in_reply_to: { text: "A technical post" } }, ["tech"]);
+  const timeline = await env.context.score("reply-1", { text: "Nice" }, ["tech"]);
+  assert.equal(inThread.verdict.tech, 0.9);
+  assert.equal(timeline.verdict.tech, 0.1);
+  assert.equal(calls, 2);
+  const cachedTimeline = await env.context.score("reply-1", { text: "Nice" }, ["tech"]);
+  assert.equal(cachedTimeline.cached, true);
+  assert.equal(calls, 2);
+});
+
+test("legacy stats migrate request and post denominators", () => {
+  const env = makeBackgroundContext();
+  assert.deepEqual(JSON.parse(JSON.stringify(env.context.migrateStats({ analyzed: 7, tokens: 700 }))), {
+    analyzed: 7,
+    hidden: 0,
+    tokens: 700,
+    cost: 0,
+    errors: 0,
+    requests: 7,
+    analyzedPosts: 7,
+    cacheHits: 0,
+    semanticCacheHits: 0,
+    inflightDedupe: 0,
+    localResolved: 0,
+    skipped: 0
+  });
 });
