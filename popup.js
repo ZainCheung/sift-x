@@ -56,12 +56,18 @@ function renderStrict() {
 
 function row(label, hidden, count, onChange) {
   const r = document.createElement("div"); r.className = "cat";
-  r.innerHTML = `<span class="n"></span><span class="cnt">${count || ""}</span>
-    <span class="seg"><button class="show ${hidden ? "" : "active"}"></button><button class="hide ${hidden ? "active" : ""}"></button></span>`;
-  r.querySelector(".n").textContent = label;
-  r.querySelector(".show").textContent = XQF_t("show", undefined, "Show");
-  r.querySelector(".hide").textContent = XQF_t("hide", undefined, "Hide");
-  const [bs, bh] = r.querySelectorAll("button");
+  const name = document.createElement("span"); name.className = "n"; name.textContent = label;
+  const total = document.createElement("span"); total.className = "cnt"; total.textContent = count || "";
+  const seg = document.createElement("span"); seg.className = "seg";
+  const bs = document.createElement("button");
+  bs.className = `show${hidden ? "" : " active"}`;
+  bs.textContent = XQF_t("show", undefined, "Show");
+  const bh = document.createElement("button");
+  bh.className = `hide${hidden ? " active" : ""}`;
+  bh.textContent = XQF_t("hide", undefined, "Hide");
+  seg.append(bs, bh);
+  r.append(name, total, seg);
+
   const set = (h) => { bs.classList.toggle("active", !h); bh.classList.toggle("active", h); onChange(h); };
   bs.addEventListener("click", () => set(false)); bh.addEventListener("click", () => set(true));
   return r;
