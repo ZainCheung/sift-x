@@ -4,10 +4,16 @@ Chrome extension. Every post and reply on X gets a label — **Substance · Humo
 
 Powered by [TypeSafe Jev](https://typesafe.ai). About $0.00003 per post.
 
-<p>
-  <img src="screenshots/timeline.png" width="560" alt="Timeline with hidden posts collapsed to one line and labels next to the author">
-  <img src="screenshots/popup.png" width="300" alt="Popup: Show / Hide per label" align="top">
-</p>
+<table>
+  <tr>
+    <td align="center"><img src="screenshots/timeline.png" width="440" alt="Timeline: hidden posts collapse to one line, labels sit next to the author"></td>
+    <td align="center"><img src="screenshots/popup.png" width="325" alt="Popup: Show or Hide per label"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Timeline — hidden posts collapse to one line; each post shows its label and AI-written %</sub></td>
+    <td align="center"><sub>Popup — flip any label between Show and Hide</sub></td>
+  </tr>
+</table>
 
 ## Install
 
