@@ -27,7 +27,8 @@ Powered by [TypeSafe Jev](https://typesafe.ai). About $0.00003 per post.
 - Each post gets one small tag next to the author. Substantive tech posts get a green tag and a hairline accent; the AI-written % appears only when it is notable.
 - Hidden posts collapse to one line; consecutive hidden posts fold into a single line with counts. **Show** expands it, **Hide** collapses it again. **⋯** → always show / always hide this account.
 - Click the toolbar icon and pick **Signal** (only substantive tech), **Balanced** or **Everything**, and how strictly "tech" is judged. Individual labels are under *Customize*. Default: hide Junk, Off-topic and AI-written — so the feed is tech-only by default. Replies are judged in the context of the post they answer.
-- Settings: hide X's right column (on by default),  filter replies too, dim instead of collapse, label-only mode, stop phrases (regex, matched locally for free).
+- Search results stay native: no Jev scoring, local filters, labels, or collapsed posts on `/search`. The normal feed and post pages still use your filtering settings.
+- Settings: hide X's right column (on by default), filter replies too, dim instead of collapse, label-only mode, stop phrases (regex, matched locally for free).
 
 ## License
 

@@ -34,8 +34,12 @@
     block = toSet(s.blocklist);
   }
 
+  const isSearchPage = () => /^\/search(?:\/|$)/.test(location.pathname);
+  let wasSearchPage = isSearchPage();
+  let routeEpoch = 0;
+
   function active() {
-    return !torn && settings?.enabled && !(settings.pausedUntil && settings.pausedUntil > Date.now());
+    return !torn && !isSearchPage() && settings?.enabled && !(settings.pausedUntil && settings.pausedUntil > Date.now());
   }
 
   async function loadSettings() {
@@ -66,7 +70,7 @@
   }
 
   function reevaluateAll() {
-    document.querySelectorAll(`article[data-testid="tweet"]`).forEach((a) => { a.removeAttribute(ATTR); resetArticle(a); });
+    document.querySelectorAll(`article[data-testid="tweet"]`).forEach((a) => { a.removeAttribute(ATTR); a.removeAttribute("data-sift-id"); resetArticle(a); });
     pageHidden = 0; for (const k in pageCounts) delete pageCounts[k];
     scan();
   }
@@ -372,6 +376,7 @@
     batchTimer = null;
     const items = batch; batch = [];
     if (!items.length) return;
+    if (!active()) { items.forEach((i) => i.resolve(null)); return; }
     send({ type: "score", items: items.map((i) => ({ id: i.t.id, state: toState(i.t) })) })
       .then((r) => {
         if (r === null) { items.forEach((i) => i.resolve(null)); return; }
@@ -409,6 +414,7 @@
     if (article.getAttribute(ATTR)) return;
     const t = extract(article);
     if (!t) return;
+    const epoch = routeEpoch;
     article.setAttribute(ATTR, "pending");
     article.setAttribute("data-sift-id", t.id);
 
@@ -416,7 +422,7 @@
     if (onStatusPage && !t.isFocal && !settings.filterReplies) {
       const v0 = verdicts.get(t.id);
       if (v0) badge(article, v0, null);
-      else requestScore(t).then((v) => v && article.isConnected && badge(article, v, null));
+      else requestScore(t).then((v) => v && active() && epoch === routeEpoch && article.isConnected && article.getAttribute("data-sift-id") === t.id && badge(article, v, null));
       article.setAttribute(ATTR, "kept");
       return;
     }
@@ -429,11 +435,19 @@
 
     if (!verdicts.has(t.id) && settings.mode === "hide") cell(article).classList.add("sift-pending");
     const v = await requestScore(t);
-    if (!article.isConnected) return;
+    if (!active() || epoch !== routeEpoch || !article.isConnected || article.getAttribute("data-sift-id") !== t.id) return;
     finish(article, t, v);
   }
 
   function scan() {
+    const search = isSearchPage();
+    if (search !== wasSearchPage) {
+      wasSearchPage = search;
+      routeEpoch++;
+      if (search) reevaluateAll(); // restore X's original results when navigating from a filtered feed
+      applyTheme();
+    }
+    if (!active()) return;
     document.querySelectorAll(`article[data-testid="tweet"]:not([${ATTR}])`).forEach(process);
   }
 
